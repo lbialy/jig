@@ -9,8 +9,32 @@ import scala.deriving.Mirror
 import scala.compiletime._
 import scala.jdk.CollectionConverters._
 
+/** Represents a path element in the config structure */
+enum ConfigPath:
+  case Root
+  case Field(name: String)
+  case Index(idx: Int)
+
+  def render: String = this match
+    case Root        => "root"
+    case Field(name) => name
+    case Index(idx)  => s"($idx)"
+
+object ConfigPath:
+  def renderPath(path: List[ConfigPath]): String =
+    path.reverse.foldLeft("root")((acc, p) =>
+      p match
+        case Root        => acc
+        case Field(name) => s"$acc.$name"
+        case Index(idx)  => s"$acc($idx)"
+    )
+
 /** A config error that never captures stack traces. */
-case class ConfigError(msg: String) extends Exception(msg) with NoStackTrace
+case class ConfigError(msg: String, path: List[ConfigPath] = List(ConfigPath.Root))
+    extends Exception(
+      s"$msg (at ${ConfigPath.renderPath(path)})"
+    )
+    with NoStackTrace
 
 /** Typeclass for writing an `A` value to a `ConfigValue`. */
 trait ConfigWriter[A]:
@@ -23,13 +47,13 @@ trait ConfigWriter[A]:
 /** Typeclass for reading an `A` from a `ConfigValue`, returning `Either[ConfigError, A]`.
   */
 trait ConfigReader[A]:
-  def read(config: ConfigValue): Either[ConfigError, A]
+  def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A]
 
   /** Maps an `A` to a `B` in `Either` fashion (no exceptions). */
   def emap[B](f: A => Either[String, B]): ConfigReader[B] = new ConfigReader[B]:
-    def read(config: ConfigValue): Either[ConfigError, B] =
-      ConfigReader.this.read(config).flatMap { a =>
-        f(a).left.map(msg => ConfigError(msg))
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, B] =
+      ConfigReader.this.read(config, path).flatMap { a =>
+        f(a).left.map(msg => ConfigError(msg, path))
       }
 
 /** Derivation helpers for writing. */
@@ -126,7 +150,7 @@ object ConfigReader:
       extends ConfigReader[A]:
     val readersMap: Map[String, ConfigReader[?]] = labelsWithInstances.toMap
 
-    def read(config: ConfigValue): Either[ConfigError, A] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
       config.valueType match
         case ConfigValueType.OBJECT =>
           val obj = config.asInstanceOf[ConfigObject]
@@ -136,18 +160,19 @@ object ConfigReader:
               val tpe = tpeObj.unwrapped.asInstanceOf[String]
               readersMap.get(tpe) match
                 case Some(reader: ConfigReader[?]) =>
-                  reader.read(value).map(_.asInstanceOf[A])
+                  reader.read(value, ConfigPath.Field("value") :: path).map(_.asInstanceOf[A])
                 case None =>
-                  Left(ConfigError(s"Unknown subtype $tpe"))
+                  Left(ConfigError(s"Unknown subtype $tpe", ConfigPath.Field("type") :: path))
             case _ =>
               Left(
                 ConfigError(
-                  "Expected an object with 'type' (string) and 'value' fields."
+                  "Expected an object with 'type' (string) and 'value' fields.",
+                  path
                 )
               )
 
         case other =>
-          Left(ConfigError(s"Expected OBJECT for sum type, got $other"))
+          Left(ConfigError(s"Expected OBJECT for sum type, got $other", path))
 
   end ConfigSumReader
 
@@ -156,7 +181,7 @@ object ConfigReader:
 
     lazy val readersMap = instances.toMap
 
-    def read(config: ConfigValue): Either[ConfigError, A] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
       config.valueType match
         case ConfigValueType.OBJECT =>
           val obj = config.asInstanceOf[ConfigObject]
@@ -168,11 +193,11 @@ object ConfigReader:
               data.get(label) match
                 case None =>
                   Left(
-                    ConfigError(s"Missing field '$label' for product type.")
+                    ConfigError(s"Missing field '$label' for product type.", path)
                   )
                 case Some(rawValue) =>
                   val cfgVal = ConfigValueFactory.fromAnyRef(rawValue)
-                  reader.read(cfgVal)
+                  reader.read(cfgVal, ConfigPath.Field(label) :: path)
             }
 
           // Combine them into one Either
@@ -182,7 +207,7 @@ object ConfigReader:
           }
 
         case other =>
-          Left(ConfigError(s"Expected OBJECT for product type, got $other"))
+          Left(ConfigError(s"Expected OBJECT for product type, got $other", path))
 
     private def sequence[A](
         xs: Vector[Either[ConfigError, A]]
@@ -196,28 +221,28 @@ object ConfigReader:
 
   /** A few base instances. Add as many as you need. */
   given ConfigReader[String] with
-    def read(config: ConfigValue): Either[ConfigError, String] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, String] =
       config.valueType match
         case ConfigValueType.STRING =>
           Right(config.unwrapped.asInstanceOf[String])
         case other =>
-          Left(ConfigError(s"Expected STRING, got $other"))
+          Left(ConfigError(s"Expected STRING, got $other", path))
 
   given ConfigReader[Int] with
-    def read(config: ConfigValue): Either[ConfigError, Int] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, Int] =
       config.valueType match
         case ConfigValueType.NUMBER =>
           Right(config.unwrapped.asInstanceOf[Number].intValue)
         case other =>
-          Left(ConfigError(s"Expected NUMBER, got $other"))
+          Left(ConfigError(s"Expected NUMBER, got $other", path))
 
   given ConfigReader[Boolean] with
-    def read(config: ConfigValue): Either[ConfigError, Boolean] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, Boolean] =
       config.valueType match
         case ConfigValueType.BOOLEAN =>
           Right(config.unwrapped.asInstanceOf[Boolean])
         case other =>
-          Left(ConfigError(s"Expected BOOLEAN, got $other"))
+          Left(ConfigError(s"Expected BOOLEAN, got $other", path))
 
   /** Summon or derive a ConfigReader[A]. */
   inline def apply[A](using cr: ConfigReader[A]): ConfigReader[A] = cr

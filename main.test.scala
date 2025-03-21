@@ -26,14 +26,16 @@ object ConfigInstances:
       ConfigValueFactory.fromIterable(values.asJava)
 
   given [A](using r: ConfigReader[A]): ConfigReader[List[A]] = new ConfigReader[List[A]]:
-    def read(config: ConfigValue): Either[ConfigError, List[A]] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, List[A]] =
       config.valueType match
         case ConfigValueType.LIST =>
           val list = config.asInstanceOf[ConfigList]
-          val results = list.asScala.toList.map(r.read)
+          val results = list.asScala.toList.zipWithIndex.map { case (elem, idx) =>
+            r.read(elem, ConfigPath.Index(idx) :: path)
+          }
           sequence(results)
         case other =>
-          Left(ConfigError(s"Expected LIST, got $other"))
+          Left(ConfigError(s"Expected LIST, got $other", path))
 
     private def sequence[A](xs: List[Either[ConfigError, A]]): Either[ConfigError, List[A]] =
       xs.foldLeft[Either[ConfigError, List[A]]](Right(Nil)) { case (accOrErr, elemOrErr) =>
@@ -57,7 +59,7 @@ class ConfigTests extends FunSuite:
 
   def assertIsomorphicConfig[A](configStr: String)(using reader: ConfigReader[A], writer: ConfigWriter[A]): Unit =
     val parsedConfig = ConfigFactory.parseString(configStr).root
-    val readValue = reader.read(parsedConfig)
+    val readValue = reader.read(parsedConfig, List(ConfigPath.Root))
     assert(readValue.isRight, s"Failed to read value: ${readValue.left.getOrElse("")}")
 
     val value = readValue.toOption.get
@@ -168,9 +170,11 @@ class ConfigTests extends FunSuite:
       |}""".stripMargin
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[Person].read(parsedConfig, List(ConfigPath.Root))
+    assert(result.isLeft)
     assertEquals(
-      ConfigReader[Person].read(parsedConfig).isLeft,
-      true
+      result.left.map(_.getMessage),
+      Left("Expected NUMBER, got STRING (at root.age)")
     )
   }
 
@@ -186,8 +190,10 @@ class ConfigTests extends FunSuite:
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
     assertEquals(
-      ConfigReader[Animal].read(parsedConfig),
-      Left(ConfigError("Unknown subtype InvalidAnimal"))
+      ConfigReader[Animal].read(parsedConfig, List(ConfigPath.Root)),
+      Left(
+        ConfigError("Unknown subtype InvalidAnimal", List(ConfigPath.Field("type"), ConfigPath.Root))
+      ) // path will render as "root.type"
     )
   }
 
@@ -198,7 +204,46 @@ class ConfigTests extends FunSuite:
       |}""".stripMargin
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
-    assert(
-      ConfigReader[Person].read(parsedConfig).isLeft
+    val result = ConfigReader[Person].read(parsedConfig, List(ConfigPath.Root))
+    assert(result.isLeft)
+    assertEquals(
+      result.left.map(_.getMessage),
+      Left("Missing field 'age' for product type. (at root)")
+    )
+  }
+
+  test("list reader provides index in error path") {
+    val invalidConfig = """
+      |{
+      |  name = "City Zoo"
+      |  animals = [
+      |    {
+      |      type = "Dog"
+      |      value = {
+      |        name = "Rex"
+      |        age = 5
+      |      }
+      |    },
+      |    {
+      |      type = "Cat"
+      |      value = {
+      |        name = "Whiskers"
+      |        lives = "nine"
+      |      }
+      |    }
+      |  ]
+      |  address = {
+      |    street = "Zoo Road"
+      |    number = 1
+      |    isApartment = false
+      |  }
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[Zoo].read(parsedConfig, List(ConfigPath.Root))
+    assert(result.isLeft)
+    assertEquals(
+      result.left.map(_.getMessage),
+      Left("Expected NUMBER, got STRING (at root.animals(1).value.lives)")
     )
   }
