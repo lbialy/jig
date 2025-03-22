@@ -6,7 +6,7 @@ package example
 import org.ekrich.config._
 import scala.util.control.NoStackTrace
 import scala.deriving.Mirror
-import scala.compiletime._
+import scala.quoted._
 import scala.jdk.CollectionConverters._
 
 /** Represents a path element in the config structure */
@@ -59,18 +59,18 @@ trait ConfigReader[A]:
 /** Derivation helpers for writing. */
 object ConfigWriter:
 
-  class ConfigSumWriter[A](sum: Mirror.SumOf[A], labels: Tuple, instances: => Vector[ConfigWriter[?]])
+  class ConfigSumWriter[A](sum: Mirror.SumOf[A], labelsWithInstances: => Vector[(String, ConfigWriter[?])])
       extends ConfigWriter[A]:
-    lazy val writers = instances
+    lazy val labeledWriters = labelsWithInstances
     def write(a: A): ConfigValue =
       // Identify which subtype (ordinal) we have
       val idx = sum.ordinal(a)
-      // Get that subtype's writer
-      val subtypeWriter = writers(idx).asInstanceOf[ConfigWriter[A]]
-      // Name of the subtype (from its label in the ADT)
-      val label = labels.productElement(idx).asInstanceOf[String]
+      val (label, subtypeWriter) = labeledWriters(idx)
+      val writer = subtypeWriter.asInstanceOf[ConfigWriter[A]]
 
-      ConfigValueFactory.fromMap(Map("type" -> label, "value" -> subtypeWriter.write(a)).asJava)
+      ConfigValueFactory.fromMap(
+        Map("type" -> label, "value" -> writer.write(a)).asJava
+      )
   end ConfigSumWriter
 
   class ConfigProductWriter[A](product: Mirror.ProductOf[A], instances: => Vector[(String, ConfigWriter[?])])
@@ -108,46 +108,47 @@ object ConfigWriter:
   /** Summon or derive a ConfigWriter[A]. */
   inline def apply[A](using cw: ConfigWriter[A]): ConfigWriter[A] = cw
 
+  inline def derived[A]: ConfigWriter[A] = ${ derivedMacro[A] }
+
   /** Macro entry point for deriving a writer from a `Mirror`. */
-  inline def derived[A](using m: Mirror.Of[A]): ConfigWriter[A] =
-    lazy val instances = summonWriterInstances[A, m.MirroredElemTypes]
-    lazy val labels = constValueTuple[m.MirroredElemLabels].toArray.toVector.map(_.asInstanceOf[String])
-    lazy val instancesWithLabels = labels.zip(instances)
-    inline m match
-      case s: Mirror.SumOf[A]     => sumWriter(s, instances)
-      case p: Mirror.ProductOf[A] => productWriter(p, instancesWithLabels)
+  def derivedMacro[A: Type](using Quotes): Expr[ConfigWriter[A]] =
+    import quotes.reflect.*
 
-  inline def summonWriterInstances[T, Elems <: Tuple]: Vector[ConfigWriter[?]] =
-    inline erasedValue[Elems] match
-      case _: (elem *: elems) => deriveOrSummonWriter[T, elem] +: summonWriterInstances[T, elems]
-      case _: EmptyTuple      => Vector.empty
+    def prepareWriterInstances(
+        elemLabels: Type[?],
+        elemTypes: Type[?],
+        tryDerive: Boolean = false
+    ): List[Expr[(String, ConfigWriter[?])]] =
+      (elemLabels, elemTypes) match
+        case ('[EmptyTuple], '[EmptyTuple]) => Nil
+        case ('[label *: labelsTail], '[tpe *: tpesTail]) =>
+          val label = Type.valueOfConstant[label].get.asInstanceOf[String]
+          val fieldName = Expr(label)
+          val fieldWriter = Expr.summon[ConfigWriter[tpe]].getOrElse {
+            if tryDerive then '{ ConfigWriter.derived[tpe] }
+            else report.errorAndAbort(s"Missing ConfigWriter for type ${Type.show[tpe]}")
+          }
+          val namedInstance = '{ ($fieldName, $fieldWriter) }
+          namedInstance :: prepareWriterInstances(Type.of[labelsTail], Type.of[tpesTail], tryDerive)
 
-  inline def deriveOrSummonWriter[T, Elem]: ConfigWriter[Elem] =
-    inline erasedValue[Elem] match
-      case _: T => deriveRecWriter[T, Elem]
-      case _    => summonInline[ConfigWriter[Elem]]
+    Expr.summon[Mirror.Of[A]].get match
+      case '{
+            $m: Mirror.ProductOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }
+          } =>
+        val instancesExpr = Expr.ofList(prepareWriterInstances(Type.of[labels], Type.of[types]))
+        '{ ConfigProductWriter($m, $instancesExpr.toVector) }
 
-  inline def deriveRecWriter[T, Elem]: ConfigWriter[Elem] =
-    inline erasedValue[T] match
-      case _: Elem => error("infinite recursive derivation")
-      case _       => ConfigWriter.derived[Elem](using summonInline[Mirror.Of[Elem]]) // recursive derivation
-
-  /** Derives a writer for a sum type (sealed trait / abstract class + case subtypes).
-    */
-  private inline def sumWriter[A](sum: Mirror.SumOf[A], instances: => Vector[ConfigWriter[?]]): ConfigWriter[A] =
-    ConfigSumWriter(sum, constValueTuple[sum.MirroredElemLabels], instances)
-
-  /** Derives a writer for a product type (case class). */
-  private inline def productWriter[A](
-      prod: Mirror.ProductOf[A],
-      labelsWithInstances: => Vector[(String, ConfigWriter[?])]
-  ): ConfigWriter[A] = ConfigProductWriter(prod, labelsWithInstances)
+      case '{
+            $m: Mirror.SumOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }
+          } =>
+        val writers = prepareWriterInstances(Type.of[labels], Type.of[types], tryDerive = true)
+        val writersExpr = Expr.ofList(writers)
+        '{ ConfigSumWriter($m, $writersExpr.toVector) }
 
 /** Derivation helpers for reading. */
 object ConfigReader:
 
-  class ConfigSumReader[A](sum: Mirror.SumOf[A], labelsWithInstances: => Vector[(String, ConfigReader[?])])
-      extends ConfigReader[A]:
+  class ConfigSumReader[A](labelsWithInstances: => Vector[(String, ConfigReader[?])]) extends ConfigReader[A]:
     val readersMap: Map[String, ConfigReader[?]] = labelsWithInstances.toMap
 
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
@@ -247,39 +248,67 @@ object ConfigReader:
   /** Summon or derive a ConfigReader[A]. */
   inline def apply[A](using cr: ConfigReader[A]): ConfigReader[A] = cr
 
+  inline def derived[A]: ConfigReader[A] = ${ derivedMacro[A] }
+
   /** Macro entry point for deriving a reader from a `Mirror`. */
-  inline def derived[A](using m: Mirror.Of[A]): ConfigReader[A] =
-    lazy val instances = summonReaderInstances[A, m.MirroredElemTypes]
-    lazy val labels = constValueTuple[m.MirroredElemLabels].toArray.toVector.map(_.asInstanceOf[String])
-    lazy val labelsWithInstances = labels.zip(instances)
-    inline m match
-      case s: Mirror.SumOf[A]     => sumReader(s, labelsWithInstances)
-      case p: Mirror.ProductOf[A] => productReader(p, labelsWithInstances)
+  def derivedMacro[A: Type](using Quotes): Expr[ConfigReader[A]] =
+    import quotes.reflect.*
 
-  inline def summonReaderInstances[T, Elems <: Tuple]: Vector[ConfigReader[?]] =
-    inline erasedValue[Elems] match
-      case _: (elem *: elems) => deriveOrSummonReader[T, elem] +: summonReaderInstances[T, elems]
-      case _: EmptyTuple      => Vector.empty
+    def findDefaultParams: Expr[Map[String, Any]] =
+      TypeRepr.of[A].classSymbol match
+        case None => '{ Map.empty[String, Any] }
+        case Some(sym) =>
+          val comp = sym.companionClass
+          try
+            val mod = Ref(sym.companionModule)
+            val names =
+              for p <- sym.caseFields if p.flags.is(Flags.HasDefault)
+              yield p.name
+            val namesExpr: Expr[List[String]] =
+              Expr.ofList(names.map(Expr(_)))
 
-  inline def deriveOrSummonReader[T, Elem]: ConfigReader[Elem] =
-    inline erasedValue[Elem] match
-      case _: T => deriveRecReader[T, Elem]
-      case _    => summonInline[ConfigReader[Elem]]
+            val body = comp.tree.asInstanceOf[ClassDef].body
+            val idents: List[Ref] =
+              for
+                case deff @ DefDef(name, _, _, _) <- body
+                if name.startsWith("$lessinit$greater$default")
+              yield mod.select(deff.symbol)
+            val typeArgs = TypeRepr.of[A].typeArgs
+            val identsExpr: Expr[List[Any]] =
+              if typeArgs.isEmpty then Expr.ofList(idents.map(_.asExpr))
+              else Expr.ofList(idents.map(_.appliedToTypes(typeArgs).asExpr))
 
-  inline def deriveRecReader[T, Elem]: ConfigReader[Elem] =
-    inline erasedValue[T] match
-      case _: Elem => error("infinite recursive derivation")
-      case _       => ConfigReader.derived[Elem](using summonInline[Mirror.Of[Elem]]) // recursive derivation
+            '{ $namesExpr.zip($identsExpr).toMap }
+          catch case _: ClassCastException => '{ Map.empty[String, Any] }
 
-  /** Derives a reader for a sum type (sealed trait / abstract class + case subtypes).
-    */
-  private inline def sumReader[A](
-      sum: Mirror.SumOf[A],
-      labelsWithInstances: => Vector[(String, ConfigReader[?])]
-  ): ConfigReader[A] = ConfigSumReader(sum, labelsWithInstances)
+    def prepareReaderInstances(
+        elemLabels: Type[?],
+        elemTypes: Type[?],
+        tryDerive: Boolean = false
+    ): List[Expr[(String, ConfigReader[?])]] =
+      (elemLabels, elemTypes) match
+        case ('[EmptyTuple], '[EmptyTuple]) => Nil
+        case ('[label *: labelsTail], '[tpe *: tpesTail]) =>
+          val label = Type.valueOfConstant[label].get.asInstanceOf[String]
+          val fieldName = Expr(label)
+          val fieldReader = Expr.summon[ConfigReader[tpe]].getOrElse {
+            if tryDerive then '{ ConfigReader.derived[tpe] }
+            else report.errorAndAbort(s"Missing ConfigReader for type ${Type.show[tpe]}")
+          }
+          val namedInstance = '{ ($fieldName, $fieldReader) }
+          namedInstance :: prepareReaderInstances(Type.of[labelsTail], Type.of[tpesTail], tryDerive)
 
-  /** Derives a reader for a product type (case class). */
-  private inline def productReader[A](
-      p: Mirror.ProductOf[A],
-      labelsWithInstances: Vector[(String, ConfigReader[?])]
-  ): ConfigReader[A] = ConfigProductReader(p, labelsWithInstances)
+    Expr.summon[Mirror.Of[A]].get match
+      case '{
+            $m: Mirror.ProductOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }
+          } =>
+        val instancesExpr = Expr.ofList(prepareReaderInstances(Type.of[labels], Type.of[types]))
+        val defaultParams = findDefaultParams
+        '{ ConfigProductReader($m, $instancesExpr.toVector) }
+
+      case '{
+            $m: Mirror.SumOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }
+          } =>
+        val readers = prepareReaderInstances(Type.of[labels], Type.of[types], tryDerive = true)
+        val readersExpr = Expr.ofList(readers)
+        '{ ConfigSumReader($readersExpr.toVector) }
