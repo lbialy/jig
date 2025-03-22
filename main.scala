@@ -1,13 +1,15 @@
-//> using scala 3.3.5
-//> using dep org.ekrich::sconfig:1.9.0
+package machinespir.it.jig
 
-package example
+import org.ekrich.config.*
+import org.ekrich.config.impl.Origin
 
-import org.ekrich.config._
 import scala.util.control.NoStackTrace
 import scala.deriving.Mirror
-import scala.quoted._
-import scala.jdk.CollectionConverters._
+import scala.quoted.*
+import scala.jdk.CollectionConverters.*
+import scala.annotation.StaticAnnotation
+
+case class comment(text: String) extends StaticAnnotation
 
 /** Represents a path element in the config structure */
 enum ConfigPath:
@@ -38,11 +40,12 @@ case class ConfigError(msg: String, path: List[ConfigPath] = List(ConfigPath.Roo
 
 /** Typeclass for writing an `A` value to a `ConfigValue`. */
 trait ConfigWriter[A]:
-  def write(a: A): ConfigValue
+  def write(a: A, includeComments: Boolean = false): ConfigValue
 
   /** Contramaps on the input type. */
   def contramap[B](f: B => A): ConfigWriter[B] = new ConfigWriter[B]:
-    def write(b: B): ConfigValue = ConfigWriter.this.write(f(b))
+    def write(b: B, includeComments: Boolean = false): ConfigValue =
+      ConfigWriter.this.write(f(b), includeComments)
 
 /** Typeclass for reading an `A` from a `ConfigValue`, returning `Either[ConfigError, A]`.
   */
@@ -62,21 +65,25 @@ object ConfigWriter:
   class ConfigSumWriter[A](sum: Mirror.SumOf[A], labelsWithInstances: => Vector[(String, ConfigWriter[?])])
       extends ConfigWriter[A]:
     lazy val labeledWriters = labelsWithInstances
-    def write(a: A): ConfigValue =
+    def write(a: A, includeComments: Boolean = false): ConfigValue =
       // Identify which subtype (ordinal) we have
       val idx = sum.ordinal(a)
       val (label, subtypeWriter) = labeledWriters(idx)
       val writer = subtypeWriter.asInstanceOf[ConfigWriter[A]]
+      val value = writer.write(a, includeComments)
 
       ConfigValueFactory.fromMap(
-        Map("type" -> label, "value" -> writer.write(a)).asJava
+        Map("type" -> label, "value" -> value).asJava
       )
   end ConfigSumWriter
 
-  class ConfigProductWriter[A](product: Mirror.ProductOf[A], instances: => Vector[(String, ConfigWriter[?])])
-      extends ConfigWriter[A]:
+  class ConfigProductWriter[A](
+      product: Mirror.ProductOf[A],
+      instances: => Vector[(String, ConfigWriter[?])],
+      commentAnnotationsByField: Map[String, Vector[comment]] = Map.empty
+  ) extends ConfigWriter[A]:
     lazy val labelsWithInstances = instances
-    def write(a: A): ConfigValue =
+    def write(a: A, includeComments: Boolean = false): ConfigValue =
       val product = a.asInstanceOf[Product]
 
       // For each field label, pick the correct writer, produce (label -> ConfigValue)
@@ -84,8 +91,13 @@ object ConfigWriter:
         labelsWithInstances
           .zip(product.productIterator)
           .map { case ((label, w: ConfigWriter[?]), fieldValue) =>
-            val fieldCfg = w.asInstanceOf[ConfigWriter[Any]].write(fieldValue)
-            label -> fieldCfg
+            val fieldCfg = w.asInstanceOf[ConfigWriter[Any]].write(fieldValue, includeComments)
+            val withComment =
+              if includeComments && commentAnnotationsByField.contains(label) then
+                val comments = commentAnnotationsByField(label).map(_.text)
+                fieldCfg.withOrigin(Origin.withComments(comments))
+              else fieldCfg
+            label -> withComment
           }
           .toMap
 
@@ -94,16 +106,21 @@ object ConfigWriter:
 
   /** A few base instances. Add as many as you need. */
   given ConfigWriter[String] with
-    def write(a: String): ConfigValue =
+    def write(a: String, includeComments: Boolean = false): ConfigValue =
       ConfigValueFactory.fromAnyRef(a)
 
   given ConfigWriter[Int] with
-    def write(a: Int): ConfigValue =
+    def write(a: Int, includeComments: Boolean = false): ConfigValue =
       ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
 
   given ConfigWriter[Boolean] with
-    def write(a: Boolean): ConfigValue =
+    def write(a: Boolean, includeComments: Boolean = false): ConfigValue =
       ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
+
+  given [A](using w: ConfigWriter[A]): ConfigWriter[List[A]] = new ConfigWriter[List[A]]:
+    def write(as: List[A], includeComments: Boolean = false): ConfigValue =
+      val values = as.map(a => w.write(a, includeComments))
+      ConfigValueFactory.fromIterable(values.asJava)
 
   /** Summon or derive a ConfigWriter[A]. */
   inline def apply[A](using cw: ConfigWriter[A]): ConfigWriter[A] = cw
@@ -131,12 +148,29 @@ object ConfigWriter:
           val namedInstance = '{ ($fieldName, $fieldWriter) }
           namedInstance :: prepareWriterInstances(Type.of[labelsTail], Type.of[tpesTail], tryDerive)
 
+    def annotationTree(tree: Tree): Option[Expr[comment]] =
+      Option.when(tree.isExpr)(tree.asExpr).filter(_.isExprOf[comment]).map(_.asExprOf[comment])
+
+    def fieldAnnotations(s: Symbol): Expr[(String, Vector[comment])] =
+      val annots = Varargs(s.annotations.reverse.flatMap(annotationTree))
+      val name = Expr(s.name)
+
+      '{ $name -> Vector($annots: _*) }
+    end fieldAnnotations
+
+    def extractComments(sym: Symbol): Expr[Map[String, Vector[comment]]] =
+      val caseParams = sym.primaryConstructor.paramSymss.take(1).flatten
+      val fieldAnns = Varargs(caseParams.map(fieldAnnotations))
+
+      '{ Map($fieldAnns: _*) }
+
     Expr.summon[Mirror.Of[A]].get match
       case '{
             $m: Mirror.ProductOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }
           } =>
         val instancesExpr = Expr.ofList(prepareWriterInstances(Type.of[labels], Type.of[types]))
-        '{ ConfigProductWriter($m, $instancesExpr.toVector) }
+        val comments = extractComments(TypeRepr.of[A].typeSymbol)
+        '{ ConfigProductWriter($m, $instancesExpr.toVector, $comments) }
 
       case '{
             $m: Mirror.SumOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }
@@ -244,6 +278,26 @@ object ConfigReader:
           Right(config.unwrapped.asInstanceOf[Boolean])
         case other =>
           Left(ConfigError(s"Expected BOOLEAN, got $other", path))
+
+  given [A](using r: ConfigReader[A]): ConfigReader[List[A]] = new ConfigReader[List[A]]:
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, List[A]] =
+      config.valueType match
+        case ConfigValueType.LIST =>
+          val list = config.asInstanceOf[ConfigList]
+          val results = list.asScala.toList.zipWithIndex.map { case (elem, idx) =>
+            r.read(elem, ConfigPath.Index(idx) :: path)
+          }
+          sequence(results)
+        case other =>
+          Left(ConfigError(s"Expected LIST, got $other", path))
+
+    private def sequence[A](xs: List[Either[ConfigError, A]]): Either[ConfigError, List[A]] =
+      xs.foldLeft[Either[ConfigError, List[A]]](Right(Nil)) { case (accOrErr, elemOrErr) =>
+        for
+          acc <- accOrErr
+          elem <- elemOrErr
+        yield acc :+ elem
+      }
 
   /** Summon or derive a ConfigReader[A]. */
   inline def apply[A](using cr: ConfigReader[A]): ConfigReader[A] = cr
