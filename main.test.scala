@@ -4,7 +4,7 @@ import org.ekrich.config.*
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 
-// Test ADTs
+// Test case classes
 case class Person(
     @comment("The person's full name")
     @comment("Used for display purposes")
@@ -38,10 +38,25 @@ case class Zoo(
 ) derives ConfigWriter,
       ConfigReader
 
+// types deriving only ConfigCodec
+enum WeatherType derives ConfigCodec:
+  case Sunny(temperature: Int, humidity: Int)
+  case Rainy(intensity: String, windSpeed: Int)
+  case Cloudy(coverage: Int, chanceOfRain: Int)
+
+case class WeatherReport(
+    @comment("Location name")
+    location: String,
+    @comment("Current weather conditions")
+    currentWeather: WeatherType,
+    @comment("Forecast for next hours")
+    forecast: List[WeatherType]
+) derives ConfigCodec
+
 class IsoTests extends FunSuite:
 
   val renderOptions =
-    ConfigRenderOptions.defaults.setComments(true).setJson(true).setOriginComments(false).setFormatted(true)
+    ConfigRenderOptions.defaults.setComments(true).setJson(false).setOriginComments(false).setFormatted(true)
 
   def assertIsomorphicConfig[A](configStr: String)(using reader: ConfigReader[A], writer: ConfigWriter[A]): Unit =
     val parsedConfig = ConfigFactory.parseString(configStr).root
@@ -59,7 +74,25 @@ class IsoTests extends FunSuite:
         .root
         .render(renderOptions)
 
-    assertEquals(renderedConfig, normalizedOriginal)
+    assertEquals(renderedConfig, normalizedOriginal, "Config serialization is not isomorphic")
+
+  def assertIsomorphicConfigCodec[A](configStr: String)(using codec: ConfigCodec[A]): Unit =
+    val parsedConfig = ConfigFactory.parseString(configStr).root
+    val readValue = codec.read(parsedConfig, List(ConfigPath.Root))
+    assert(readValue.isRight, s"Failed to read value: ${readValue.left.getOrElse("")}")
+
+    val value = readValue.toOption.get
+    val writtenConfig = codec.write(value)
+    val renderedConfig = writtenConfig.render(renderOptions)
+
+    // Parse both strings to normalize formatting
+    val normalizedOriginal =
+      ConfigFactory
+        .parseString(configStr)
+        .root
+        .render(renderOptions)
+
+    assertEquals(renderedConfig, normalizedOriginal, "Config serialization is not isomorphic")
 
   test("comments in product type serialization") {
     val person = Person("Alice", 30)
@@ -119,7 +152,7 @@ class IsoTests extends FunSuite:
       |}""".stripMargin)
       .root
       .render(renderOptions)
-    assertEquals(renderedWithoutComments, normalizedOriginal)
+    assertEquals(renderedWithoutComments, normalizedOriginal, "Config without comments does not match")
   }
 
   test("product type isomorphic serialization") {
@@ -225,7 +258,8 @@ class IsoTests extends FunSuite:
     assert(result.isLeft)
     assertEquals(
       result.left.map(_.getMessage),
-      Left("Expected NUMBER, got STRING (at root.age)")
+      Left("Expected NUMBER, got STRING (at root.age)"),
+      "Error message does not match"
     )
   }
 
@@ -244,7 +278,8 @@ class IsoTests extends FunSuite:
       ConfigReader[Animal].read(parsedConfig, List(ConfigPath.Root)),
       Left(
         ConfigError("Unknown subtype InvalidAnimal", List(ConfigPath.Field("type"), ConfigPath.Root))
-      ) // path will render as "root.type"
+      ),
+      "Error message does not match"
     )
   }
 
@@ -259,7 +294,8 @@ class IsoTests extends FunSuite:
     assert(result.isLeft)
     assertEquals(
       result.left.map(_.getMessage),
-      Left("Missing field 'age' for product type. (at root)")
+      Left("Missing field 'age' for product type. (at root)"),
+      "Error message does not match"
     )
   }
 
@@ -295,6 +331,147 @@ class IsoTests extends FunSuite:
     assert(result.isLeft)
     assertEquals(
       result.left.map(_.getMessage),
-      Left("Expected NUMBER, got STRING (at root.animals(1).value.lives)")
+      Left("Expected NUMBER, got STRING (at root.animals(1).value.lives)"),
+      "Error message does not match"
+    )
+  }
+
+  // tests for ConfigCodec types
+  test("WeatherType sum type isomorphic serialization") {
+    val sunnyConfig = """
+      |{
+      |  type = "Sunny"
+      |  value = {
+      |    temperature = 25
+      |    humidity = 60
+      |  }
+      |}""".stripMargin
+
+    assertIsomorphicConfigCodec[WeatherType](sunnyConfig)
+
+    val rainyConfig = """
+      |{
+      |  type = "Rainy"
+      |  value = {
+      |    intensity = "heavy"
+      |    windSpeed = 30
+      |  }
+      |}""".stripMargin
+
+    assertIsomorphicConfigCodec[WeatherType](rainyConfig)
+
+    val cloudyConfig = """
+      |{
+      |  type = "Cloudy"
+      |  value = {
+      |    coverage = 80
+      |    chanceOfRain = 40
+      |  }
+      |}""".stripMargin
+
+    assertIsomorphicConfigCodec[WeatherType](cloudyConfig)
+  }
+
+  test("WeatherReport complex type isomorphic serialization with comments") {
+    val configWithComments = """
+      |{
+      |  # Location name
+      |  location = "New York"
+      |  # Current weather conditions
+      |  currentWeather = {
+      |    type = "Sunny"
+      |    value = {
+      |      temperature = 25
+      |      humidity = 60
+      |    }
+      |  }
+      |  # Forecast for next hours
+      |  forecast = [
+      |    {
+      |      type = "Cloudy"
+      |      value = {
+      |        coverage = 70
+      |        chanceOfRain = 30
+      |      }
+      |    },
+      |    {
+      |      type = "Rainy"
+      |      value = {
+      |        intensity = "light"
+      |        windSpeed = 15
+      |      }
+      |    }
+      |  ]
+      |}""".stripMargin
+
+    // First read from config with comments
+    val parsedConfig = ConfigFactory.parseString(configWithComments).root
+    val readValue = ConfigCodec[WeatherReport].read(parsedConfig)
+    assert(readValue.isRight)
+
+    // Write with comments and verify
+    val value = readValue.toOption.get
+    val writtenWithComments = ConfigCodec[WeatherReport].write(value, includeComments = true)
+    val renderedWithComments = writtenWithComments.render(renderOptions)
+    assert(renderedWithComments.contains("Location name"))
+    assert(renderedWithComments.contains("Current weather conditions"))
+    assert(renderedWithComments.contains("Forecast for next hours"))
+
+    // Write without comments and verify it matches original data
+    val writtenWithoutComments = ConfigCodec[WeatherReport].write(value, includeComments = false)
+    val renderedWithoutComments = writtenWithoutComments.render(renderOptions)
+    val normalizedOriginal = ConfigFactory
+      .parseString("""
+      |{
+      |  location = "New York"
+      |  currentWeather = {
+      |    type = "Sunny"
+      |    value = {
+      |      temperature = 25
+      |      humidity = 60
+      |    }
+      |  }
+      |  forecast = [
+      |    {
+      |      type = "Cloudy"
+      |      value = {
+      |        coverage = 70
+      |        chanceOfRain = 30
+      |      }
+      |    },
+      |    {
+      |      type = "Rainy"
+      |      value = {
+      |        intensity = "light"
+      |        windSpeed = 15
+      |      }
+      |    }
+      |  ]
+      |}""".stripMargin)
+      .root
+      .render(renderOptions)
+    assertEquals(renderedWithoutComments, normalizedOriginal, "Config without comments does not match")
+  }
+
+  test("WeatherReport handles invalid weather type") {
+    val invalidConfig = """
+      |{
+      |  location = "New York"
+      |  currentWeather = {
+      |    type = "InvalidWeather"
+      |    value = {
+      |      temperature = 25
+      |      humidity = 60
+      |    }
+      |  }
+      |  forecast = []
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigCodec[WeatherReport].read(parsedConfig, List(ConfigPath.Root))
+    assert(result.isLeft)
+    assertEquals(
+      result.left.map(_.getMessage),
+      Left("Unknown subtype InvalidWeather (at root.currentWeather.type)")
     )
   }

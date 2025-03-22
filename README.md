@@ -6,7 +6,7 @@ Features:
 - [X] configuration errors with paths
 - [X] isomorphic tests
 - [X] writing field-level comments from annotations
-- [ ] ConfigCodec typeclass (dual read/write)
+- [X] ConfigCodec typeclass (dual read/write)
 - [ ] aggregating errors instead of fail-fast
 - [ ] clean up file structure
 - [ ] add a boatload of common types

@@ -127,6 +127,8 @@ object ConfigWriter:
 
   inline def derived[A]: ConfigWriter[A] = ${ derivedMacro[A] }
 
+  inline given configWriterFromCodec[A](using cc: ConfigCodec[A]): ConfigWriter[A] = cc.writer
+
   /** Macro entry point for deriving a writer from a `Mirror`. */
   def derivedMacro[A: Type](using Quotes): Expr[ConfigWriter[A]] =
     import quotes.reflect.*
@@ -304,6 +306,8 @@ object ConfigReader:
 
   inline def derived[A]: ConfigReader[A] = ${ derivedMacro[A] }
 
+  inline given configReaderFromCodec[A](using cc: ConfigCodec[A]): ConfigReader[A] = cc.reader
+
   /** Macro entry point for deriving a reader from a `Mirror`. */
   def derivedMacro[A: Type](using Quotes): Expr[ConfigReader[A]] =
     import quotes.reflect.*
@@ -366,3 +370,27 @@ object ConfigReader:
         val readers = prepareReaderInstances(Type.of[labels], Type.of[types], tryDerive = true)
         val readersExpr = Expr.ofList(readers)
         '{ ConfigSumReader($readersExpr.toVector) }
+
+/** Typeclass that combines both reading and writing capabilities for a type `A`. */
+trait ConfigCodec[A]:
+  def reader: ConfigReader[A]
+  def writer: ConfigWriter[A]
+
+  def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
+    reader.read(config, path)
+
+  def write(a: A, includeComments: Boolean = false): ConfigValue =
+    writer.write(a, includeComments)
+
+object ConfigCodec:
+  class ConfigCodecImpl[A](val reader: ConfigReader[A], val writer: ConfigWriter[A]) extends ConfigCodec[A]
+
+  /** Summon or derive a ConfigCodec[A]. */
+  inline def apply[A](using cc: ConfigCodec[A]): ConfigCodec[A] = cc
+
+  /** Derive a ConfigCodec by combining derived ConfigReader and ConfigWriter instances. */
+  inline def derived[A]: ConfigCodec[A] = ConfigCodecImpl(ConfigReader.derived[A], ConfigWriter.derived[A])
+
+  /** Base instances that combine existing ConfigReader and ConfigWriter instances */
+  inline given configCodecFromReaderAndWriter[A](using r: ConfigReader[A], w: ConfigWriter[A]): ConfigCodec[A] =
+    ConfigCodecImpl(r, w)
