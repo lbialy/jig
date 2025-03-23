@@ -7,7 +7,8 @@ Features:
 - [X] isomorphic tests
 - [X] writing field-level comments from annotations
 - [X] ConfigCodec typeclass (dual read/write)
-- [ ] aggregating errors instead of fail-fast
+- [X] aggregating errors instead of fail-fast
+- [ ] default parameters support
 - [ ] clean up file structure
 - [ ] add a boatload of common types
 - [ ] utility methods in jig package object to hide org.ekrich.config types
