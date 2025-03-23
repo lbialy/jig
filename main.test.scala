@@ -61,9 +61,18 @@ class IsoTests extends FunSuite:
   def assertIsomorphicConfig[A](configStr: String)(using reader: ConfigReader[A], writer: ConfigWriter[A]): Unit =
     val parsedConfig = ConfigFactory.parseString(configStr).root
     val readValue = reader.read(parsedConfig, List(ConfigPath.Root))
-    assert(readValue.isRight, s"Failed to read value: ${readValue.left.getOrElse("")}")
+    assert(
+      readValue.isSuccess,
+      readValue match {
+        case ReadFailed(errors) => s"Failed to read value: ${errors.head.getMessage}"
+        case _                  => ""
+      }
+    )
 
-    val value = readValue.toOption.get
+    val value = readValue match
+      case ReadSucceeded(v) => v
+      case _                => fail("Expected ReadSucceeded")
+
     val writtenConfig = writer.write(value)
     val renderedConfig = writtenConfig.render(renderOptions)
 
@@ -79,9 +88,18 @@ class IsoTests extends FunSuite:
   def assertIsomorphicConfigCodec[A](configStr: String)(using codec: ConfigCodec[A]): Unit =
     val parsedConfig = ConfigFactory.parseString(configStr).root
     val readValue = codec.read(parsedConfig, List(ConfigPath.Root))
-    assert(readValue.isRight, s"Failed to read value: ${readValue.left.getOrElse("")}")
+    assert(
+      readValue.isSuccess,
+      readValue match {
+        case ReadFailed(errors) => s"Failed to read value: ${errors.head.getMessage}"
+        case _                  => ""
+      }
+    )
 
-    val value = readValue.toOption.get
+    val value = readValue match
+      case ReadSucceeded(v) => v
+      case _                => fail("Expected ReadSucceeded")
+
     val writtenConfig = codec.write(value)
     val renderedConfig = writtenConfig.render(renderOptions)
 
@@ -117,23 +135,25 @@ class IsoTests extends FunSuite:
   }
 
   test("isomorphic serialization with comments") {
-    val configWithComments = """
-      |{
-      |  # The person's full name
-      |  # Used for display purposes
-      |  name = "Alice"
-      |  # The person's age in months
-      |  # Must be non-negative
-      |  age = 30
-      |}""".stripMargin
+    val configWithComments =
+      """# The person's age in months
+        |# Must be non-negative
+        |age=30
+        |# The person's full name
+        |# Used for display purposes
+        |name=Alice
+        |""".stripMargin
 
     // First read from config with comments
     val parsedConfig = ConfigFactory.parseString(configWithComments).root
     val readValue = ConfigReader[Person].read(parsedConfig)
-    assert(readValue.isRight)
+    assert(readValue.isSuccess)
 
     // Write with comments and verify
-    val value = readValue.toOption.get
+    val value = readValue match
+      case ReadSucceeded(v) => v
+      case _                => fail("Expected ReadSucceeded")
+
     val writtenWithComments = ConfigWriter[Person].write(value, includeComments = true)
     val renderedWithComments = writtenWithComments.render(renderOptions)
     assert(renderedWithComments.contains("The person's full name"))
@@ -141,17 +161,14 @@ class IsoTests extends FunSuite:
     assert(renderedWithComments.contains("The person's age in months"))
     assert(renderedWithComments.contains("Must be non-negative"))
 
+    assertEquals(renderedWithComments, configWithComments, "Config with comments does not match original")
+
     // Write without comments and verify it matches original data
     val writtenWithoutComments = ConfigWriter[Person].write(value, includeComments = false)
     val renderedWithoutComments = writtenWithoutComments.render(renderOptions)
-    val normalizedOriginal = ConfigFactory
-      .parseString("""
-      |{
-      |  name = "Alice"
-      |  age = 30
-      |}""".stripMargin)
-      .root
-      .render(renderOptions)
+    val normalizedOriginal =
+      ConfigFactory.parseString(configWithComments).root.render(renderOptions.setComments(false))
+
     assertEquals(renderedWithoutComments, normalizedOriginal, "Config without comments does not match")
   }
 
@@ -255,12 +272,15 @@ class IsoTests extends FunSuite:
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
     val result = ConfigReader[Person].read(parsedConfig, List(ConfigPath.Root))
-    assert(result.isLeft)
-    assertEquals(
-      result.left.map(_.getMessage),
-      Left("Expected NUMBER, got STRING (at root.age)"),
-      "Error message does not match"
-    )
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(
+          errors.head.getMessage,
+          "Expected NUMBER, got STRING (at root.age)",
+          "Error message does not match"
+        )
+      case _ => fail("Expected ReadFailed")
   }
 
   test("sum type reader handles invalid type") {
@@ -274,9 +294,10 @@ class IsoTests extends FunSuite:
       |}""".stripMargin
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[Animal].read(parsedConfig, List(ConfigPath.Root))
     assertEquals(
-      ConfigReader[Animal].read(parsedConfig, List(ConfigPath.Root)),
-      Left(
+      result,
+      ReadResult.failure(
         ConfigError("Unknown subtype InvalidAnimal", List(ConfigPath.Field("type"), ConfigPath.Root))
       ),
       "Error message does not match"
@@ -291,12 +312,15 @@ class IsoTests extends FunSuite:
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
     val result = ConfigReader[Person].read(parsedConfig, List(ConfigPath.Root))
-    assert(result.isLeft)
-    assertEquals(
-      result.left.map(_.getMessage),
-      Left("Missing field 'age' for product type. (at root)"),
-      "Error message does not match"
-    )
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(
+          errors.head.getMessage,
+          "Missing field 'age' for product type. (at root)",
+          "Error message does not match"
+        )
+      case _ => fail("Expected ReadFailed")
   }
 
   test("list reader provides index in error path") {
@@ -328,12 +352,15 @@ class IsoTests extends FunSuite:
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
     val result = ConfigReader[Zoo].read(parsedConfig, List(ConfigPath.Root))
-    assert(result.isLeft)
-    assertEquals(
-      result.left.map(_.getMessage),
-      Left("Expected NUMBER, got STRING (at root.animals(1).value.lives)"),
-      "Error message does not match"
-    )
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(
+          errors.head.getMessage,
+          "Expected NUMBER, got STRING (at root.animals(1).value.lives)",
+          "Error message does not match"
+        )
+      case _ => fail("Expected ReadFailed")
   }
 
   // tests for ConfigCodec types
@@ -407,10 +434,13 @@ class IsoTests extends FunSuite:
     // First read from config with comments
     val parsedConfig = ConfigFactory.parseString(configWithComments).root
     val readValue = ConfigCodec[WeatherReport].read(parsedConfig)
-    assert(readValue.isRight)
+    assert(readValue.isSuccess)
 
     // Write with comments and verify
-    val value = readValue.toOption.get
+    val value = readValue match
+      case ReadSucceeded(v) => v
+      case _                => fail("Expected ReadSucceeded")
+
     val writtenWithComments = ConfigCodec[WeatherReport].write(value, includeComments = true)
     val renderedWithComments = writtenWithComments.render(renderOptions)
     assert(renderedWithComments.contains("Location name"))
@@ -469,9 +499,231 @@ class IsoTests extends FunSuite:
 
     val parsedConfig = ConfigFactory.parseString(invalidConfig).root
     val result = ConfigCodec[WeatherReport].read(parsedConfig, List(ConfigPath.Root))
-    assert(result.isLeft)
-    assertEquals(
-      result.left.map(_.getMessage),
-      Left("Unknown subtype InvalidWeather (at root.currentWeather.type)")
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(
+          errors.head.getMessage,
+          "Unknown subtype InvalidWeather (at root.currentWeather.type)"
+        )
+      case _ => fail("Expected ReadFailed")
+  }
+
+  // Tests for ReadResult error accumulation
+  test("accumulates multiple field errors in product type") {
+    val invalidConfig = """
+      |{
+      |  name = 42
+      |  age = "thirty"
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[Person].read(parsedConfig)
+
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 2, "Should contain exactly 2 errors")
+        assert(errors.toList.exists(_.getMessage.contains("Expected STRING, got NUMBER (at root.name)")))
+        assert(errors.toList.exists(_.getMessage.contains("Expected NUMBER, got STRING (at root.age)")))
+      case _ => fail("Expected ReadFailed")
+  }
+
+  test("accumulates errors in nested structure") {
+    val invalidConfig = """
+      |{
+      |  name = "City Zoo"
+      |  animals = [
+      |    {
+      |      type = "Dog"
+      |      value = {
+      |        name = 123
+      |        age = "five"
+      |      }
+      |    },
+      |    {
+      |      type = "Cat"
+      |      value = {
+      |        name = true
+      |        lives = "nine"
+      |      }
+      |    }
+      |  ]
+      |  address = {
+      |    street = 42
+      |    number = "one hundred"
+      |    isApartment = "yes"
+      |  }
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[Zoo].read(parsedConfig)
+
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        // Should collect 7 errors: 2 in first animal, 2 in second animal, and 3 in address
+        assertEquals(errors.toList.size, 7, "Should contain all 7 errors")
+
+        // Check for animal errors
+        assert(errors.toList.exists(_.getMessage.contains("root.animals(0).value.name")))
+        assert(errors.toList.exists(_.getMessage.contains("root.animals(0).value.age")))
+        assert(errors.toList.exists(_.getMessage.contains("root.animals(1).value.name")))
+        assert(errors.toList.exists(_.getMessage.contains("root.animals(1).value.lives")))
+
+        // Check for address errors
+        assert(errors.toList.exists(_.getMessage.contains("root.address.street")))
+        assert(errors.toList.exists(_.getMessage.contains("root.address.number")))
+        assert(errors.toList.exists(_.getMessage.contains("root.address.isApartment")))
+      case _ => fail("Expected ReadFailed")
+  }
+
+  test("accumulates errors in list of simple types") {
+    val invalidConfig = """
+      |{
+      |  names = ["Alice", 42, true, "Bob", 99]
+      |}""".stripMargin
+
+    // Define a case class for this test
+    case class Names(names: List[String]) derives ConfigReader
+
+    val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[Names].read(parsedConfig)
+
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 3, "Should contain exactly 3 errors")
+        assert(errors.toList.exists(_.getMessage.contains("root.names(1)")))
+        assert(errors.toList.exists(_.getMessage.contains("root.names(2)")))
+        assert(errors.toList.exists(_.getMessage.contains("root.names(4)")))
+      case _ => fail("Expected ReadFailed")
+  }
+
+  test("accumulates mixed error types") {
+    val invalidConfig = """
+      |{
+      |  name = "Weather Report"
+      |  currentWeather = {
+      |    type = "Sunny"
+      |    value = {
+      |      temperature = "hot"
+      |      humidity = true
+      |    }
+      |  }
+      |  forecast = [
+      |    {
+      |      type = "Unknown"
+      |      value = {}
+      |    },
+      |    {
+      |      type = "Rainy"
+      |      value = {
+      |        intensity = 42
+      |        windSpeed = "strong"
+      |      }
+      |    },
+      |    {
+      |      value = {
+      |        coverage = 80
+      |        chanceOfRain = 40
+      |      }
+      |    }
+      |  ]
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(invalidConfig).root
+    val result = ConfigReader[WeatherReport].read(parsedConfig)
+
+    assert(!result.isSuccess)
+    result match
+      case ReadFailed(errors) =>
+        // Count expected errors: 2 in current weather, 1 unknown type, 2 in rainy weather, 1 missing type field
+        assertEquals(errors.toList.size, 7, "Should contain all 7 errors")
+
+        // Current weather errors
+        assert(errors.toList.exists(_.getMessage.contains("root.currentWeather.value.temperature")))
+        assert(errors.toList.exists(_.getMessage.contains("root.currentWeather.value.humidity")))
+
+        // Forecast errors
+        assert(errors.toList.exists(_.getMessage.contains("Unknown subtype Unknown")))
+        assert(errors.toList.exists(_.getMessage.contains("root.forecast(1).value.intensity")))
+        assert(errors.toList.exists(_.getMessage.contains("root.forecast(1).value.windSpeed")))
+        assert(errors.toList.exists(_.getMessage.contains("Expected an object with 'type'")))
+
+        // The index-specific error for the missing type
+        assert(errors.toList.exists(e => e.getMessage.contains("type") && e.getMessage.contains("root.forecast(2)")))
+      case _ => fail("Expected ReadFailed")
+  }
+
+  test("ReadResult map2 correctly accumulates errors") {
+    // Create a few error results to combine
+    val error1 = ReadResult.failure(ConfigError("Error 1"))
+    val error2 = ReadResult.failure(ConfigError("Error 2"))
+    val success = ReadResult.success(42)
+
+    // Test combining two failures
+    val combined1 = ReadResult.map2(error1, error2)((_, _) => "irrelevant")
+    combined1 match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 2, "Should contain both errors")
+        assertEquals(errors.toList.map(_.msg), List("Error 1", "Error 2"))
+      case _ => fail("Expected ReadFailed")
+
+    // Test combining failure and success
+    val combined2 = ReadResult.map2(error1, success)((_, _) => "irrelevant")
+    combined2 match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 1, "Should contain one error")
+        assertEquals(errors.head.msg, "Error 1")
+      case _ => fail("Expected ReadFailed")
+
+    // Test combining success and failure
+    val combined3 = ReadResult.map2(success, error2)((_, _) => "irrelevant")
+    combined3 match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 1, "Should contain one error")
+        assertEquals(errors.head.msg, "Error 2")
+      case _ => fail("Expected ReadFailed")
+
+    // Test combining two successes
+    val combined4 = ReadResult.map2(success, ReadResult.success("hello"))((a, b) => s"$a-$b")
+    combined4 match
+      case ReadSucceeded(value) =>
+        assertEquals(value, "42-hello", "Should contain combined value")
+      case _ => fail("Expected ReadSucceeded")
+  }
+
+  test("ReadResult sequence accumulates all errors") {
+    // Create a list with multiple error results and some successes
+    val results = List(
+      ReadResult.success(1),
+      ReadResult.failure(ConfigError("Error A")),
+      ReadResult.success(3),
+      ReadResult.failure(ConfigError("Error B")),
+      ReadResult.failure(ConfigError("Error C"))
     )
+
+    val sequenced = ReadResult.sequence(results)
+
+    sequenced match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 3, "Should contain all three errors")
+        assert(errors.toList.exists(_.msg == "Error A"))
+        assert(errors.toList.exists(_.msg == "Error B"))
+        assert(errors.toList.exists(_.msg == "Error C"))
+      case _ => fail("Expected ReadFailed")
+
+    // Test with all successes
+    val allSuccess = List(
+      ReadResult.success(1),
+      ReadResult.success(2),
+      ReadResult.success(3)
+    )
+
+    val sequencedSuccess = ReadResult.sequence(allSuccess)
+    sequencedSuccess match
+      case ReadSucceeded(list) =>
+        assertEquals(list, List(1, 2, 3), "Should contain all values")
+      case _ => fail("Expected ReadSucceeded")
   }

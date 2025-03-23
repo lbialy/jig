@@ -9,6 +9,61 @@ import scala.quoted.*
 import scala.jdk.CollectionConverters.*
 import scala.annotation.StaticAnnotation
 
+/** A simple non-empty list implementation */
+sealed trait NonEmptyList[+A]:
+  def head: A
+  def tail: List[A]
+  def toList: List[A] = head :: tail
+  def ::[B >: A](b: B): NonEmptyList[B] = NonEmptyList.cons(b, this)
+  def ++[B >: A](other: NonEmptyList[B]): NonEmptyList[B] =
+    NonEmptyList.fromHeadTail(head, tail ++ other.toList)
+
+object NonEmptyList:
+  def one[A](a: A): NonEmptyList[A] = NEL(a, Nil)
+  def fromHeadTail[A](h: A, t: List[A]): NonEmptyList[A] = NEL(h, t)
+  def cons[A](h: A, t: NonEmptyList[A]): NonEmptyList[A] = NEL(h, t.toList)
+
+  private case class NEL[+A](head: A, tail: List[A]) extends NonEmptyList[A]
+
+/** Represents the result of reading a config value */
+sealed trait ReadResult[+A]:
+  def isSuccess: Boolean = this match
+    case ReadSucceeded(_) => true
+    case ReadFailed(_)    => false
+
+  def map[B](f: A => B): ReadResult[B] = this match
+    case ReadSucceeded(a)  => ReadSucceeded(f(a))
+    case f @ ReadFailed(_) => f
+
+  def flatMap[B](f: A => ReadResult[B]): ReadResult[B] = this match
+    case ReadSucceeded(a)  => f(a)
+    case f @ ReadFailed(_) => f
+
+  def toEither: Either[NonEmptyList[ConfigError], A] = this match
+    case ReadSucceeded(a) => Right(a)
+    case ReadFailed(es)   => Left(es)
+
+case class ReadSucceeded[+A](value: A) extends ReadResult[A]
+case class ReadFailed(errors: NonEmptyList[ConfigError]) extends ReadResult[Nothing]
+
+object ReadResult:
+  def success[A](a: A): ReadResult[A] = ReadSucceeded(a)
+  def failure(error: ConfigError): ReadResult[Nothing] = ReadFailed(NonEmptyList.one(error))
+  def failures(head: ConfigError, tail: ConfigError*): ReadResult[Nothing] =
+    ReadFailed(NonEmptyList.fromHeadTail(head, tail.toList))
+
+  def map2[A, B, C](fa: ReadResult[A], fb: ReadResult[B])(f: (A, B) => C): ReadResult[C] =
+    (fa, fb) match
+      case (ReadSucceeded(a), ReadSucceeded(b)) => ReadSucceeded(f(a, b))
+      case (ReadFailed(e1), ReadFailed(e2))     => ReadFailed(e1 ++ e2)
+      case (ReadFailed(e), _)                   => ReadFailed(e)
+      case (_, ReadFailed(e))                   => ReadFailed(e)
+
+  def sequence[A](fas: List[ReadResult[A]]): ReadResult[List[A]] =
+    fas.foldRight[ReadResult[List[A]]](ReadSucceeded(Nil)) { (fa, acc) =>
+      map2(fa, acc)(_ :: _)
+    }
+
 case class comment(text: String) extends StaticAnnotation
 
 /** Represents a path element in the config structure */
@@ -46,18 +101,6 @@ trait ConfigWriter[A]:
   def contramap[B](f: B => A): ConfigWriter[B] = new ConfigWriter[B]:
     def write(b: B, includeComments: Boolean = false): ConfigValue =
       ConfigWriter.this.write(f(b), includeComments)
-
-/** Typeclass for reading an `A` from a `ConfigValue`, returning `Either[ConfigError, A]`.
-  */
-trait ConfigReader[A]:
-  def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A]
-
-  /** Maps an `A` to a `B` in `Either` fashion (no exceptions). */
-  def emap[B](f: A => Either[String, B]): ConfigReader[B] = new ConfigReader[B]:
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, B] =
-      ConfigReader.this.read(config, path).flatMap { a =>
-        f(a).left.map(msg => ConfigError(msg, path))
-      }
 
 /** Derivation helpers for writing. */
 object ConfigWriter:
@@ -181,35 +224,59 @@ object ConfigWriter:
         val writersExpr = Expr.ofList(writers)
         '{ ConfigSumWriter($m, $writersExpr.toVector) }
 
+/** Typeclass for reading an `A` from a `ConfigValue`, returning `ReadResult[A]`.
+  */
+trait ConfigReader[A]:
+  def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[A]
+
+  /** Maps an `A` to a `B` in `ReadResult` fashion (no exceptions). */
+  def emap[B](f: A => Either[String, B]): ConfigReader[B] = new ConfigReader[B]:
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[B] =
+      ConfigReader.this.read(config, path).flatMap { a =>
+        f(a).fold(
+          msg => ReadResult.failure(ConfigError(msg, path)),
+          ReadResult.success
+        )
+      }
+
 /** Derivation helpers for reading. */
 object ConfigReader:
 
   class ConfigSumReader[A](labelsWithInstances: => Vector[(String, ConfigReader[?])]) extends ConfigReader[A]:
     val readersMap: Map[String, ConfigReader[?]] = labelsWithInstances.toMap
 
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[A] =
       config.valueType match
         case ConfigValueType.OBJECT =>
           val obj = config.asInstanceOf[ConfigObject]
 
-          (obj.get("type"), obj.get("value")) match
-            case (tpeObj, value) if tpeObj.valueType == ConfigValueType.STRING =>
-              val tpe = tpeObj.unwrapped.asInstanceOf[String]
-              readersMap.get(tpe) match
-                case Some(reader: ConfigReader[?]) =>
-                  reader.read(value, ConfigPath.Field("value") :: path).map(_.asInstanceOf[A])
-                case None =>
-                  Left(ConfigError(s"Unknown subtype $tpe", ConfigPath.Field("type") :: path))
-            case _ =>
-              Left(
+          (Option(obj.get("type")), Option(obj.get("value"))) match
+            case (None, _) | (_, None) =>
+              ReadResult.failure(
                 ConfigError(
                   "Expected an object with 'type' (string) and 'value' fields.",
                   path
                 )
               )
 
+            case (Some(tpeObj), Some(valueObj)) if tpeObj.valueType != ConfigValueType.STRING =>
+              ReadResult.failure(
+                ConfigError(
+                  "Expected 'type' field to be a string.",
+                  ConfigPath.Field("type") :: path
+                )
+              )
+
+            case (Some(tpeObj), Some(valueObj)) =>
+              val tpe = tpeObj.unwrapped.asInstanceOf[String]
+              readersMap.get(tpe) match
+                case Some(reader) =>
+                  reader.read(valueObj, ConfigPath.Field("value") :: path).map(_.asInstanceOf[A])
+                case None =>
+                  ReadResult.failure(ConfigError(s"Unknown subtype $tpe", ConfigPath.Field("type") :: path))
+
         case other =>
-          Left(ConfigError(s"Expected OBJECT for sum type, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected OBJECT for sum type, got $other", path))
 
   end ConfigSumReader
 
@@ -218,18 +285,18 @@ object ConfigReader:
 
     lazy val readersMap = instances.toMap
 
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[A] =
       config.valueType match
         case ConfigValueType.OBJECT =>
           val obj = config.asInstanceOf[ConfigObject]
           val data = obj.unwrapped.asScala
 
           // We read each field and accumulate errors or results in a list
-          val fieldsOrErr =
+          val fieldsResults =
             instances.map { case (label, reader) =>
               data.get(label) match
                 case None =>
-                  Left(
+                  ReadResult.failure(
                     ConfigError(s"Missing field '$label' for product type.", path)
                   )
                 case Some(rawValue) =>
@@ -237,69 +304,55 @@ object ConfigReader:
                   reader.read(cfgVal, ConfigPath.Field(label) :: path)
             }
 
-          // Combine them into one Either
-          sequence(fieldsOrErr).map { fieldValues =>
+          // Combine them into one ReadResult
+          val allFields = fieldsResults.foldRight[ReadResult[List[Any]]](ReadResult.success(Nil)) { (fieldRes, acc) =>
+            ReadResult.map2(fieldRes, acc)(_ :: _)
+          }
+
+          allFields.map { fieldValues =>
             // Convert list -> Tuple -> product A
             product.fromProduct(Tuple.fromArray(fieldValues.toArray))
           }
 
         case other =>
-          Left(ConfigError(s"Expected OBJECT for product type, got $other", path))
-
-    private def sequence[A](
-        xs: Vector[Either[ConfigError, A]]
-    ): Either[ConfigError, Vector[A]] =
-      xs.foldLeft[Either[ConfigError, Vector[A]]](Right(Vector.empty)) { case (accOrErr, elemOrErr) =>
-        for
-          elem <- elemOrErr
-          acc <- accOrErr
-        yield acc :+ elem
-      }
+          ReadResult.failure(ConfigError(s"Expected OBJECT for product type, got $other", path))
 
   /** A few base instances. Add as many as you need. */
   given ConfigReader[String] with
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, String] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[String] =
       config.valueType match
         case ConfigValueType.STRING =>
-          Right(config.unwrapped.asInstanceOf[String])
+          ReadResult.success(config.unwrapped.asInstanceOf[String])
         case other =>
-          Left(ConfigError(s"Expected STRING, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
 
   given ConfigReader[Int] with
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, Int] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Int] =
       config.valueType match
         case ConfigValueType.NUMBER =>
-          Right(config.unwrapped.asInstanceOf[Number].intValue)
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].intValue)
         case other =>
-          Left(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
 
   given ConfigReader[Boolean] with
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, Boolean] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Boolean] =
       config.valueType match
         case ConfigValueType.BOOLEAN =>
-          Right(config.unwrapped.asInstanceOf[Boolean])
+          ReadResult.success(config.unwrapped.asInstanceOf[Boolean])
         case other =>
-          Left(ConfigError(s"Expected BOOLEAN, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected BOOLEAN, got $other", path))
 
   given [A](using r: ConfigReader[A]): ConfigReader[List[A]] = new ConfigReader[List[A]]:
-    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, List[A]] =
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[List[A]] =
       config.valueType match
         case ConfigValueType.LIST =>
           val list = config.asInstanceOf[ConfigList]
           val results = list.asScala.toList.zipWithIndex.map { case (elem, idx) =>
             r.read(elem, ConfigPath.Index(idx) :: path)
           }
-          sequence(results)
+          ReadResult.sequence(results)
         case other =>
-          Left(ConfigError(s"Expected LIST, got $other", path))
-
-    private def sequence[A](xs: List[Either[ConfigError, A]]): Either[ConfigError, List[A]] =
-      xs.foldLeft[Either[ConfigError, List[A]]](Right(Nil)) { case (accOrErr, elemOrErr) =>
-        for
-          acc <- accOrErr
-          elem <- elemOrErr
-        yield acc :+ elem
-      }
+          ReadResult.failure(ConfigError(s"Expected LIST, got $other", path))
 
   /** Summon or derive a ConfigReader[A]. */
   inline def apply[A](using cr: ConfigReader[A]): ConfigReader[A] = cr
@@ -376,7 +429,7 @@ trait ConfigCodec[A]:
   def reader: ConfigReader[A]
   def writer: ConfigWriter[A]
 
-  def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): Either[ConfigError, A] =
+  def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[A] =
     reader.read(config, path)
 
   def write(a: A, includeComments: Boolean = false): ConfigValue =
