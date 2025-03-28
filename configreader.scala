@@ -131,6 +131,180 @@ object ConfigReader:
         case other =>
           ReadResult.failure(ConfigError(s"Expected BOOLEAN, got $other", path))
 
+  given ConfigReader[Byte] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Byte] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].byteValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[Short] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Short] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].shortValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[Long] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Long] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].longValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[Float] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Float] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].floatValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[Double] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Double] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].doubleValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[Char] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Char] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          val str = config.unwrapped.asInstanceOf[String]
+          if str.length == 1 then ReadResult.success(str.charAt(0))
+          else ReadResult.failure(ConfigError("Expected single character string", path))
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[BigInt] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[BigInt] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(BigInt(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid BigInt format: ${e.getMessage}", path))
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[BigDecimal] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[BigDecimal] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(BigDecimal(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid BigDecimal format: ${e.getMessage}", path))
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[scala.concurrent.duration.Duration] with
+    def read(
+        config: ConfigValue,
+        path: List[ConfigPath] = List(ConfigPath.Root)
+    ): ReadResult[scala.concurrent.duration.Duration] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(
+            scala.concurrent.duration.Duration.fromNanos(config.unwrapped.asInstanceOf[Number].longValue)
+          )
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[scala.concurrent.duration.FiniteDuration] with
+    def read(
+        config: ConfigValue,
+        path: List[ConfigPath] = List(ConfigPath.Root)
+    ): ReadResult[scala.concurrent.duration.FiniteDuration] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(
+            scala.concurrent.duration.FiniteDuration(
+              config.unwrapped.asInstanceOf[Number].longValue,
+              scala.concurrent.duration.NANOSECONDS
+            )
+          )
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given javaLongReader: ConfigReader[java.lang.Long] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Long] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].longValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given javaDoubleReader: ConfigReader[java.lang.Double] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Double] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].doubleValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given javaFloatReader: ConfigReader[java.lang.Float] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Float] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].floatValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given javaShortReader: ConfigReader[java.lang.Short] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Short] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].shortValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given javaByteReader: ConfigReader[java.lang.Byte] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Byte] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          ReadResult.success(config.unwrapped.asInstanceOf[Number].byteValue)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given javaCharacterReader: ConfigReader[java.lang.Character] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Character] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          val str = config.unwrapped.asInstanceOf[String]
+          if str.length == 1 then ReadResult.success(str.charAt(0))
+          else ReadResult.failure(ConfigError("Expected single character string", path))
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given [A](using r: ConfigReader[A]): ConfigReader[Option[A]] = new ConfigReader[Option[A]]:
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Option[A]] =
+      if config.valueType == ConfigValueType.NULL then ReadResult.success(None)
+      else r.read(config, path).map(Some(_))
+
+  given [A, B](using ra: ConfigReader[A], rb: ConfigReader[B]): ConfigReader[Either[A, B]] =
+    new ConfigReader[Either[A, B]]:
+      def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Either[A, B]] =
+        config.valueType match
+          case ConfigValueType.OBJECT =>
+            val obj = config.asInstanceOf[ConfigObject]
+            (Option(obj.get("type")), Option(obj.get("value"))) match
+              case (Some(tpe), Some(value)) if tpe.unwrapped == "left" =>
+                ra.read(value, ConfigPath.Field("value") :: path).map(Left(_))
+              case (Some(tpe), Some(value)) if tpe.unwrapped == "right" =>
+                rb.read(value, ConfigPath.Field("value") :: path).map(Right(_))
+              case _ =>
+                ReadResult.failure(
+                  ConfigError("Expected object with 'type' ('left' or 'right') and 'value' fields", path)
+                )
+          case other =>
+            ReadResult.failure(ConfigError(s"Expected OBJECT, got $other", path))
+
   given [A](using r: ConfigReader[A]): ConfigReader[List[A]] = new ConfigReader[List[A]]:
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[List[A]] =
       config.valueType match

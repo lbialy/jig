@@ -75,6 +75,86 @@ object ConfigWriter:
     def write(a: Boolean, includeComments: Boolean = false): ConfigValue =
       ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
 
+  given ConfigWriter[Byte] with
+    def write(a: Byte, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
+
+  given ConfigWriter[Short] with
+    def write(a: Short, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
+
+  given ConfigWriter[Long] with
+    def write(a: Long, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
+
+  given ConfigWriter[Float] with
+    def write(a: Float, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
+
+  given ConfigWriter[Double] with
+    def write(a: Double, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.asInstanceOf[AnyRef])
+
+  given ConfigWriter[Char] with
+    def write(a: Char, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[BigInt] with
+    def write(a: BigInt, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[BigDecimal] with
+    def write(a: BigDecimal, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[scala.concurrent.duration.Duration] with
+    def write(a: scala.concurrent.duration.Duration, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toNanos.asInstanceOf[AnyRef])
+
+  given ConfigWriter[scala.concurrent.duration.FiniteDuration] with
+    def write(a: scala.concurrent.duration.FiniteDuration, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toNanos.asInstanceOf[AnyRef])
+
+  given javaLongWriter: ConfigWriter[java.lang.Long] with
+    def write(a: java.lang.Long, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a)
+
+  given javaDoubleWriter: ConfigWriter[java.lang.Double] with
+    def write(a: java.lang.Double, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a)
+
+  given javaFloatWriter: ConfigWriter[java.lang.Float] with
+    def write(a: java.lang.Float, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a)
+
+  given javaShortWriter: ConfigWriter[java.lang.Short] with
+    def write(a: java.lang.Short, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a)
+
+  given javaByteWriter: ConfigWriter[java.lang.Byte] with
+    def write(a: java.lang.Byte, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a)
+
+  given javaCharacterWriter: ConfigWriter[java.lang.Character] with
+    def write(a: java.lang.Character, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given [A](using w: ConfigWriter[A]): ConfigWriter[Option[A]] = new ConfigWriter[Option[A]]:
+    def write(a: Option[A], includeComments: Boolean = false): ConfigValue =
+      a match
+        case Some(value) => w.write(value, includeComments)
+        case None        => ConfigValueFactory.fromAnyRef(null)
+
+  // Ty, s
+  given [A, B](using wa: ConfigWriter[A], wb: ConfigWriter[B]): ConfigWriter[Either[A, B]] =
+    new ConfigWriter[Either[A, B]]:
+      def write(a: Either[A, B], includeComments: Boolean = false): ConfigValue =
+        a match
+          case Left(value) =>
+            ConfigValueFactory.fromMap(Map("type" -> "left", "value" -> wa.write(value, includeComments)).asJava)
+          case Right(value) =>
+            ConfigValueFactory.fromMap(Map("type" -> "right", "value" -> wb.write(value, includeComments)).asJava)
+
   given [A](using w: ConfigWriter[A]): ConfigWriter[List[A]] = new ConfigWriter[List[A]]:
     def write(as: List[A], includeComments: Boolean = false): ConfigValue =
       val values = as.map(a => w.write(a, includeComments))

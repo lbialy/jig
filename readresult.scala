@@ -14,6 +14,10 @@ sealed trait ReadResult[+A]:
     case ReadSucceeded(a)  => f(a)
     case f @ ReadFailed(_) => f
 
+  def fold[B](f: NonEmptyList[ConfigError] => B, g: A => B): B = this match
+    case ReadSucceeded(a) => g(a)
+    case ReadFailed(es)   => f(es)
+
   def toEither: Either[NonEmptyList[ConfigError], A] = this match
     case ReadSucceeded(a) => Right(a)
     case ReadFailed(es)   => Left(es)
@@ -38,3 +42,5 @@ object ReadResult:
     fas.foldRight[ReadResult[List[A]]](ReadSucceeded(Nil)) { (fa, acc) =>
       map2(fa, acc)(_ :: _)
     }
+
+extension [A](nel: NonEmptyList[A]) def mkString(sep: String = ", "): String = nel.toList.mkString(sep)
