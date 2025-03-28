@@ -10,6 +10,6 @@ Features:
 - [X] aggregating errors instead of fail-fast
 - [X] default parameters support
 - [X] clean up file structure
-- [ ] add a boatload of common types
+- [X] add a boatload of common types
 - [ ] utility methods in jig package object to hide org.ekrich.config types
 - [ ] maybe add integration with iron
