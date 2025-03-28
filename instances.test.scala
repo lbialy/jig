@@ -65,3 +65,60 @@ class InstancesTest extends FunSuite:
   testIsomorphic("List[Option[Int]]", List(Some(1), None, Some(3)))
   testIsomorphic("Either[List[Int], String]", Left(List(1, 2, 3)): Either[List[Int], String])
   testIsomorphic("List[Either[String, Int]]", List(Left("error"), Right(42), Left("oops")))
+
+  // Java Time types
+  testIsomorphic("Instant", java.time.Instant.parse("2024-03-14T12:34:56.789Z"))
+  testIsomorphic("LocalDate", java.time.LocalDate.parse("2024-03-14"))
+  testIsomorphic("LocalTime", java.time.LocalTime.parse("12:34:56.789"))
+  testIsomorphic("LocalDateTime", java.time.LocalDateTime.parse("2024-03-14T12:34:56.789"))
+  testIsomorphic("ZonedDateTime", java.time.ZonedDateTime.parse("2024-03-14T12:34:56.789+01:00[Europe/Paris]"))
+  testIsomorphic("OffsetDateTime", java.time.OffsetDateTime.parse("2024-03-14T12:34:56.789+01:00"))
+  testIsomorphic("Duration", java.time.Duration.parse("PT1H30M"))
+  testIsomorphic("Period", java.time.Period.parse("P1Y2M3D"))
+  testIsomorphic("Year", java.time.Year.of(2024))
+  testIsomorphic("YearMonth", java.time.YearMonth.parse("2024-03"))
+  testIsomorphic("MonthDay", java.time.MonthDay.parse("--03-14"))
+  testIsomorphic("DayOfWeek", java.time.DayOfWeek.THURSDAY)
+  testIsomorphic("Month", java.time.Month.MARCH)
+  testIsomorphic("ZoneId", java.time.ZoneId.of("Europe/Paris"))
+  testIsomorphic("ZoneOffset", java.time.ZoneOffset.ofHours(1))
+
+  // Java Util types
+  testIsomorphic("UUID", java.util.UUID.fromString("550e8400-e29b-41d4-a716-446655440000"))
+  testIsomorphic("Locale", java.util.Locale.forLanguageTag("en-US"))
+  testIsomorphic("Currency", java.util.Currency.getInstance("USD"))
+
+  // Java Net types
+  testIsomorphic("URI", java.net.URI("http://example.com"))
+  testIsomorphic("InetAddress", java.net.InetAddress.getByName("127.0.0.1"))
+  testIsomorphic("InetSocketAddress", java.net.InetSocketAddress.createUnresolved("localhost", 8080))
+
+  // Java NIO types
+  testIsomorphic("Path", java.nio.file.Path.of("/tmp/test.txt"))
+
+  // Java Regex types
+  test("Pattern") {
+    val pattern = java.util.regex.Pattern.compile("\\d+")
+    val written = summon[ConfigWriter[java.util.regex.Pattern]].write(pattern)
+    val read = summon[ConfigReader[java.util.regex.Pattern]].read(written)
+    read.fold(
+      errors => throw new AssertionError(s"Failed to read value: ${errors.mkString(", ")}"),
+      readValue => assertEquals(readValue.pattern(), pattern.pattern())
+    )
+  }
+
+  // Java Math types
+  testIsomorphic("java.math.BigInteger", new java.math.BigInteger("123456789"))
+  testIsomorphic("java.math.BigDecimal", new java.math.BigDecimal("123.456"))
+
+  // Scala Collection types
+  testIsomorphic("Set[Int]", Set(1, 2, 3))
+  testIsomorphic("TreeSet[Int]", scala.collection.immutable.TreeSet(3, 1, 2))
+  testIsomorphic("Vector[String]", Vector("a", "b", "c"))
+  testIsomorphic("Map[String, Int]", Map("one" -> 1, "two" -> 2))
+  testIsomorphic("TreeMap[String, Int]", scala.collection.immutable.TreeMap("a" -> 1, "b" -> 2))
+
+  // Nested collection tests
+  testIsomorphic("Set[List[Int]]", Set(List(1, 2), List(3, 4)))
+  testIsomorphic("Map[String, Vector[Int]]", Map("nums" -> Vector(1, 2, 3)))
+  testIsomorphic("Vector[Map[String, Int]]", Vector(Map("a" -> 1), Map("b" -> 2)))

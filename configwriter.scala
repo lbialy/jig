@@ -218,3 +218,137 @@ object ConfigWriter:
         val writers = prepareWriterInstances(Type.of[labels], Type.of[types], tryDerive = true)
         val writersExpr = Expr.ofList(writers)
         '{ ConfigSumWriter($m, $writersExpr.toVector) }
+
+  given ConfigWriter[java.time.Instant] with
+    def write(a: java.time.Instant, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.LocalDate] with
+    def write(a: java.time.LocalDate, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.LocalTime] with
+    def write(a: java.time.LocalTime, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.LocalDateTime] with
+    def write(a: java.time.LocalDateTime, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.ZonedDateTime] with
+    def write(a: java.time.ZonedDateTime, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.OffsetDateTime] with
+    def write(a: java.time.OffsetDateTime, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given javaTimeDurationConfigWriter: ConfigWriter[java.time.Duration] with
+    def write(a: java.time.Duration, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.Period] with
+    def write(a: java.time.Period, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.Year] with
+    def write(a: java.time.Year, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.getValue.asInstanceOf[AnyRef])
+
+  given ConfigWriter[java.time.YearMonth] with
+    def write(a: java.time.YearMonth, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.MonthDay] with
+    def write(a: java.time.MonthDay, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.time.DayOfWeek] with
+    def write(a: java.time.DayOfWeek, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.name)
+
+  given ConfigWriter[java.time.Month] with
+    def write(a: java.time.Month, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.name)
+
+  given ConfigWriter[java.time.ZoneId] with
+    def write(a: java.time.ZoneId, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.getId)
+
+  given ConfigWriter[java.time.ZoneOffset] with
+    def write(a: java.time.ZoneOffset, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.getId)
+
+  // java.util instances
+  given ConfigWriter[java.util.UUID] with
+    def write(a: java.util.UUID, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.util.Locale] with
+    def write(a: java.util.Locale, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toLanguageTag)
+
+  given ConfigWriter[java.util.Currency] with
+    def write(a: java.util.Currency, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.getCurrencyCode)
+
+  // java.net instances
+  given ConfigWriter[java.net.URI] with
+    def write(a: java.net.URI, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given ConfigWriter[java.net.InetAddress] with
+    def write(a: java.net.InetAddress, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.getHostAddress)
+
+  given ConfigWriter[java.net.InetSocketAddress] with
+    def write(a: java.net.InetSocketAddress, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(s"${a.getHostString}:${a.getPort}")
+
+  // java.nio.file instances
+  given ConfigWriter[java.nio.file.Path] with
+    def write(a: java.nio.file.Path, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  // java.util.regex instances
+  given ConfigWriter[java.util.regex.Pattern] with
+    def write(a: java.util.regex.Pattern, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.pattern)
+
+  // java.math instances
+  given javaMathBigIntegerWriter: ConfigWriter[java.math.BigInteger] with
+    def write(a: java.math.BigInteger, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  given javaMathBigDecimalWriter: ConfigWriter[java.math.BigDecimal] with
+    def write(a: java.math.BigDecimal, includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromAnyRef(a.toString)
+
+  // Scala collection instances
+  given [A](using w: ConfigWriter[A]): ConfigWriter[Set[A]] = new ConfigWriter[Set[A]]:
+    def write(as: Set[A], includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromIterable(as.map(a => w.write(a, includeComments)).toList.asJava)
+
+  given [A](using w: ConfigWriter[A]): ConfigWriter[scala.collection.immutable.TreeSet[A]] =
+    new ConfigWriter[scala.collection.immutable.TreeSet[A]]:
+      def write(as: scala.collection.immutable.TreeSet[A], includeComments: Boolean = false): ConfigValue =
+        ConfigValueFactory.fromIterable(as.toList.map(a => w.write(a, includeComments)).asJava)
+
+  given [A](using w: ConfigWriter[A]): ConfigWriter[Vector[A]] = new ConfigWriter[Vector[A]]:
+    def write(as: Vector[A], includeComments: Boolean = false): ConfigValue =
+      ConfigValueFactory.fromIterable(as.map(a => w.write(a, includeComments)).asJava)
+
+  given [K, V](using wk: ConfigWriter[K], wv: ConfigWriter[V]): ConfigWriter[Map[K, V]] = new ConfigWriter[Map[K, V]]:
+    def write(map: Map[K, V], includeComments: Boolean = false): ConfigValue =
+      val entries = map.map { case (k, v) =>
+        k.toString -> wv.write(v, includeComments)
+      }
+      ConfigValueFactory.fromMap(entries.asJava)
+
+  given [K, V](using wk: ConfigWriter[K], wv: ConfigWriter[V]): ConfigWriter[scala.collection.immutable.TreeMap[K, V]] =
+    new ConfigWriter[scala.collection.immutable.TreeMap[K, V]]:
+      def write(map: scala.collection.immutable.TreeMap[K, V], includeComments: Boolean = false): ConfigValue =
+        val entries = map.map { case (k, v) =>
+          k.toString -> wv.write(v, includeComments)
+        }
+        ConfigValueFactory.fromMap(entries.asJava)

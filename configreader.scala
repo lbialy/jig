@@ -386,3 +386,314 @@ object ConfigReader:
         val readers = prepareReaderInstances(Type.of[labels], Type.of[types], tryDerive = true)
         val readersExpr = Expr.ofList(readers)
         '{ ConfigSumReader($readersExpr.toVector) }
+
+  given ConfigReader[java.time.Instant] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.Instant] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.Instant.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Instant format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.LocalDate] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.LocalDate] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.LocalDate.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid LocalDate format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.LocalTime] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.LocalTime] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.LocalTime.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid LocalTime format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.LocalDateTime] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.LocalDateTime] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.LocalDateTime.parse(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception => ReadResult.failure(ConfigError(s"Invalid LocalDateTime format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.ZonedDateTime] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.ZonedDateTime] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.ZonedDateTime.parse(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception => ReadResult.failure(ConfigError(s"Invalid ZonedDateTime format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.OffsetDateTime] with
+    def read(
+        config: ConfigValue,
+        path: List[ConfigPath] = List(ConfigPath.Root)
+    ): ReadResult[java.time.OffsetDateTime] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.OffsetDateTime.parse(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception =>
+              ReadResult.failure(ConfigError(s"Invalid OffsetDateTime format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given javaTimeDurationReader: ConfigReader[java.time.Duration] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.Duration] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.Duration.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Duration format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.Period] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.Period] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.Period.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Period format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.Year] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.Year] =
+      config.valueType match
+        case ConfigValueType.NUMBER =>
+          try ReadResult.success(java.time.Year.of(config.unwrapped.asInstanceOf[Number].intValue))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Year value: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+
+  given ConfigReader[java.time.YearMonth] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.YearMonth] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.YearMonth.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid YearMonth format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.MonthDay] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.MonthDay] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.MonthDay.parse(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid MonthDay format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.DayOfWeek] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.DayOfWeek] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.DayOfWeek.valueOf(config.unwrapped.asInstanceOf[String].toUpperCase))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid DayOfWeek value: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.Month] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.Month] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.Month.valueOf(config.unwrapped.asInstanceOf[String].toUpperCase))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Month value: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.ZoneId] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.ZoneId] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.ZoneId.of(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid ZoneId format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.time.ZoneOffset] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.ZoneOffset] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.time.ZoneOffset.of(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception => ReadResult.failure(ConfigError(s"Invalid ZoneOffset format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  // java.util instances
+  given ConfigReader[java.util.UUID] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.util.UUID] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.util.UUID.fromString(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid UUID format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.util.Locale] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.util.Locale] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.util.Locale.forLanguageTag(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Locale format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.util.Currency] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.util.Currency] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.util.Currency.getInstance(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Currency code: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  // java.net instances
+  given ConfigReader[java.net.URI] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.net.URI] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.net.URI.create(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid URI format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.net.InetAddress] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.net.InetAddress] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.net.InetAddress.getByName(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception => ReadResult.failure(ConfigError(s"Invalid InetAddress format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given ConfigReader[java.net.InetSocketAddress] with
+    def read(
+        config: ConfigValue,
+        path: List[ConfigPath] = List(ConfigPath.Root)
+    ): ReadResult[java.net.InetSocketAddress] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try
+            val str = config.unwrapped.asInstanceOf[String]
+            val parts = str.split(":")
+            if parts.length != 2 then throw new IllegalArgumentException("Expected format: host:port")
+            val host = parts(0)
+            val port = parts(1).toInt
+            ReadResult.success(java.net.InetSocketAddress.createUnresolved(host, port))
+          catch
+            case e: Exception =>
+              ReadResult.failure(
+                ConfigError(s"Invalid InetSocketAddress format (expected host:port): ${e.getMessage}", path)
+              )
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  // java.nio.file instances
+  given ConfigReader[java.nio.file.Path] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.nio.file.Path] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.nio.file.Path.of(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Path format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  // java.util.regex instances
+  given ConfigReader[java.util.regex.Pattern] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.util.regex.Pattern] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(java.util.regex.Pattern.compile(config.unwrapped.asInstanceOf[String]))
+          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid regex pattern: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  // java.math instances (if not already present)
+  given javaMathBigIntegerReader: ConfigReader[java.math.BigInteger] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.math.BigInteger] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(new java.math.BigInteger(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception => ReadResult.failure(ConfigError(s"Invalid BigInteger format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  given javaMathBigDecimalReader: ConfigReader[java.math.BigDecimal] with
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.math.BigDecimal] =
+      config.valueType match
+        case ConfigValueType.STRING =>
+          try ReadResult.success(new java.math.BigDecimal(config.unwrapped.asInstanceOf[String]))
+          catch
+            case e: Exception => ReadResult.failure(ConfigError(s"Invalid BigDecimal format: ${e.getMessage}", path))
+        case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
+
+  // Scala collection instances
+  given [A](using r: ConfigReader[A]): ConfigReader[Set[A]] = new ConfigReader[Set[A]]:
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Set[A]] =
+      config.valueType match
+        case ConfigValueType.LIST =>
+          val list = config.asInstanceOf[ConfigList]
+          val results = list.asScala.toList.zipWithIndex.map { case (elem, idx) =>
+            r.read(elem, ConfigPath.Index(idx) :: path)
+          }
+          ReadResult.sequence(results).map(_.toSet)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected LIST, got $other", path))
+
+  given [A: Ordering](using r: ConfigReader[A]): ConfigReader[scala.collection.immutable.TreeSet[A]] =
+    new ConfigReader[scala.collection.immutable.TreeSet[A]]:
+      def read(
+          config: ConfigValue,
+          path: List[ConfigPath] = List(ConfigPath.Root)
+      ): ReadResult[scala.collection.immutable.TreeSet[A]] =
+        config.valueType match
+          case ConfigValueType.LIST =>
+            val list = config.asInstanceOf[ConfigList]
+            val results = list.asScala.toList.zipWithIndex.map { case (elem, idx) =>
+              r.read(elem, ConfigPath.Index(idx) :: path)
+            }
+            ReadResult.sequence(results).map(scala.collection.immutable.TreeSet.from(_))
+          case other =>
+            ReadResult.failure(ConfigError(s"Expected LIST, got $other", path))
+
+  given [A](using r: ConfigReader[A]): ConfigReader[Vector[A]] = new ConfigReader[Vector[A]]:
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Vector[A]] =
+      config.valueType match
+        case ConfigValueType.LIST =>
+          val list = config.asInstanceOf[ConfigList]
+          val results = list.asScala.toList.zipWithIndex.map { case (elem, idx) =>
+            r.read(elem, ConfigPath.Index(idx) :: path)
+          }
+          ReadResult.sequence(results).map(_.toVector)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected LIST, got $other", path))
+
+  given [K, V](using rk: ConfigReader[K], rv: ConfigReader[V]): ConfigReader[Map[K, V]] = new ConfigReader[Map[K, V]]:
+    def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Map[K, V]] =
+      config.valueType match
+        case ConfigValueType.OBJECT =>
+          val obj = config.asInstanceOf[ConfigObject]
+          val results = obj.entrySet.asScala.map { entry =>
+            val keyStr = entry.getKey
+            val value = entry.getValue
+            for
+              key <- rk.read(ConfigValueFactory.fromAnyRef(keyStr), ConfigPath.Field(keyStr) :: path)
+              value <- rv.read(value, ConfigPath.Field(keyStr) :: path)
+            yield key -> value
+          }
+          ReadResult.sequence(results.toList).map(_.toMap)
+        case other =>
+          ReadResult.failure(ConfigError(s"Expected OBJECT, got $other", path))
+
+  given [K: Ordering, V](using
+      rk: ConfigReader[K],
+      rv: ConfigReader[V]
+  ): ConfigReader[scala.collection.immutable.TreeMap[K, V]] =
+    new ConfigReader[scala.collection.immutable.TreeMap[K, V]]:
+      def read(
+          config: ConfigValue,
+          path: List[ConfigPath] = List(ConfigPath.Root)
+      ): ReadResult[scala.collection.immutable.TreeMap[K, V]] =
+        config.valueType match
+          case ConfigValueType.OBJECT =>
+            val obj = config.asInstanceOf[ConfigObject]
+            val results = obj.entrySet.asScala.map { entry =>
+              val keyStr = entry.getKey
+              val value = entry.getValue
+              for
+                key <- rk.read(ConfigValueFactory.fromAnyRef(keyStr), ConfigPath.Field(keyStr) :: path)
+                value <- rv.read(value, ConfigPath.Field(keyStr) :: path)
+              yield key -> value
+            }
+            ReadResult.sequence(results.toList).map(pairs => scala.collection.immutable.TreeMap.from(pairs))
+          case other =>
+            ReadResult.failure(ConfigError(s"Expected OBJECT, got $other", path))
