@@ -280,8 +280,11 @@ object ConfigReader:
 
   end ConfigSumReader
 
-  class ConfigProductReader[A](product: Mirror.ProductOf[A], instances: => Vector[(String, ConfigReader[?])])
-      extends ConfigReader[A]:
+  class ConfigProductReader[A](
+      product: Mirror.ProductOf[A],
+      instances: => Vector[(String, ConfigReader[?])],
+      defaultParams: Map[String, Any] = Map.empty
+  ) extends ConfigReader[A]:
 
     lazy val readersMap = instances.toMap
 
@@ -296,9 +299,14 @@ object ConfigReader:
             instances.map { case (label, reader) =>
               data.get(label) match
                 case None =>
-                  ReadResult.failure(
-                    ConfigError(s"Missing field '$label' for product type.", path)
-                  )
+                  // If field is missing, try to use default value
+                  defaultParams.get(label) match
+                    case Some(defaultValue) =>
+                      ReadResult.success(defaultValue)
+                    case None =>
+                      ReadResult.failure(
+                        ConfigError(s"Missing field '$label' for product type.", path)
+                      )
                 case Some(rawValue) =>
                   val cfgVal = ConfigValueFactory.fromAnyRef(rawValue)
                   reader.read(cfgVal, ConfigPath.Field(label) :: path)
@@ -415,7 +423,7 @@ object ConfigReader:
           } =>
         val instancesExpr = Expr.ofList(prepareReaderInstances(Type.of[labels], Type.of[types]))
         val defaultParams = findDefaultParams
-        '{ ConfigProductReader($m, $instancesExpr.toVector) }
+        '{ ConfigProductReader($m, $instancesExpr.toVector, $defaultParams) }
 
       case '{
             $m: Mirror.SumOf[A] { type MirroredElemLabels = labels; type MirroredElemTypes = types }

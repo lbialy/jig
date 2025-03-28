@@ -727,3 +727,139 @@ class IsoTests extends FunSuite:
         assertEquals(list, List(1, 2, 3), "Should contain all values")
       case _ => fail("Expected ReadSucceeded")
   }
+
+  // Tests for default parameter support
+  test("ConfigReader uses default values for missing fields") {
+    // Define a case class with default values
+    case class ConfigWithDefaults(
+        name: String,
+        age: Int = 42,
+        enabled: Boolean = true,
+        tags: List[String] = List("default")
+    ) derives ConfigReader
+
+    // Test with missing fields
+    val configWithMissingFields = """
+      |{
+      |  name = "Alice"
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(configWithMissingFields).root
+    val result = ConfigReader[ConfigWithDefaults].read(parsedConfig)
+
+    assert(result.isSuccess, "Should succeed with default values")
+    result match
+      case ReadSucceeded(value) =>
+        assertEquals(value.name, "Alice", "Non-default field should be read")
+        assertEquals(value.age, 42, "Should use default age")
+        assertEquals(value.enabled, true, "Should use default enabled")
+        assertEquals(value.tags, List("default"), "Should use default tags")
+      case _ => fail("Expected ReadSucceeded")
+  }
+
+  test("ConfigReader uses provided values over defaults") {
+    case class ConfigWithDefaults(
+        name: String,
+        age: Int = 42,
+        enabled: Boolean = true,
+        tags: List[String] = List("default")
+    ) derives ConfigReader
+
+    // Test with all fields provided
+    val configWithAllFields = """
+      |{
+      |  name = "Bob"
+      |  age = 30
+      |  enabled = false
+      |  tags = ["custom", "tags"]
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(configWithAllFields).root
+    val result = ConfigReader[ConfigWithDefaults].read(parsedConfig)
+
+    assert(result.isSuccess, "Should succeed with provided values")
+    result match
+      case ReadSucceeded(value) =>
+        assertEquals(value.name, "Bob", "Should use provided name")
+        assertEquals(value.age, 30, "Should use provided age")
+        assertEquals(value.enabled, false, "Should use provided enabled")
+        assertEquals(value.tags, List("custom", "tags"), "Should use provided tags")
+      case _ => fail("Expected ReadSucceeded")
+  }
+
+  test("ConfigReader fails for missing required fields") {
+    case class ConfigWithRequiredAndDefaults(
+        name: String, // required
+        age: Int = 42, // optional
+        enabled: Boolean = true // optional
+    ) derives ConfigReader
+
+    // Test with missing required field
+    val configWithMissingRequired = """
+      |{
+      |  age = 30
+      |  enabled = false
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(configWithMissingRequired).root
+    val result = ConfigReader[ConfigWithRequiredAndDefaults].read(parsedConfig)
+
+    assert(!result.isSuccess, "Should fail with missing required field")
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 1, "Should have one error")
+        assertEquals(errors.head.getMessage, "Missing field 'name' for product type. (at root)")
+      case _ => fail("Expected ReadFailed")
+  }
+
+  test("ConfigReader handles nested types with defaults") {
+    case class NestedConfig(
+        name: String,
+        address: Address = Address("Default St", 1, false),
+        age: Int = 42
+    ) derives ConfigReader
+
+    // Test with missing nested field
+    val configWithMissingNested = """
+      |{
+      |  name = "Charlie"
+      |  age = 30
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(configWithMissingNested).root
+    val result = ConfigReader[NestedConfig].read(parsedConfig)
+
+    assert(result.isSuccess, "Should succeed with default nested value")
+    result match
+      case ReadSucceeded(value) =>
+        assertEquals(value.name, "Charlie", "Should use provided name")
+        assertEquals(value.address, Address("Default St", 1, false), "Should use default address")
+        assertEquals(value.age, 30, "Should use provided age")
+      case _ => fail("Expected ReadSucceeded")
+  }
+
+  test("ConfigReader accumulates errors for invalid fields even with defaults") {
+    case class ConfigWithDefaults(
+        name: String,
+        age: Int = 42,
+        enabled: Boolean = true
+    ) derives ConfigReader
+
+    // Test with invalid field values
+    val configWithInvalidFields = """
+      |{
+      |  name = 123
+      |  age = "not a number"
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(configWithInvalidFields).root
+    val result = ConfigReader[ConfigWithDefaults].read(parsedConfig)
+
+    assert(!result.isSuccess, "Should fail with invalid field values")
+    result match
+      case ReadFailed(errors) =>
+        assertEquals(errors.toList.size, 2, "Should have two errors")
+        assert(errors.toList.exists(_.getMessage.contains("Expected STRING, got NUMBER (at root.name)")))
+        assert(errors.toList.exists(_.getMessage.contains("Expected NUMBER, got STRING (at root.age)")))
+      case _ => fail("Expected ReadFailed")
+  }
