@@ -871,3 +871,26 @@ class IsoTests extends FunSuite:
         )
       case _ => fail("Expected ReadFailed")
   }
+
+  test("Empty enum members are serialized as strings") {
+    case class Test(`enum`: SimpleEnum) derives ConfigCodec
+    enum SimpleEnum derives ConfigCodec:
+      case A, B, C
+
+    val config = """
+      |{
+      |  enum = "A"
+      |}""".stripMargin
+
+    val parsedConfig = ConfigFactory.parseString(config).root
+    val result = ConfigReader[Test].read(parsedConfig)
+    result.fold(
+      errors => throw new AssertionError(s"Failed to read value: ${errors.mkString(", ")}"),
+      readValue => assertEquals(readValue, Test(`enum` = SimpleEnum.A))
+    )
+
+    // Test writing
+    val written = ConfigWriter[SimpleEnum].write(SimpleEnum.A)
+    assertEquals(written.valueType, ConfigValueType.STRING)
+    assertEquals(written.unwrapped, "A")
+  }

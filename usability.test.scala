@@ -285,7 +285,7 @@ class UsabilityTests extends munit.FunSuite:
       |  createdAt = "2024-01-01T00:00:00Z"
       |  lastModified = "2024-01-01T00:00:00Z[UTC]"
       |  environment = "production"
-      |  provider = { type = "AWS", value = {} }
+      |  provider = "AWS"
       |  region = "us-east-1"
       |}
       |network {
@@ -307,7 +307,7 @@ class UsabilityTests extends munit.FunSuite:
       |  }
       |}
       |compute {
-      |  size = { type = "Small", value = {} }
+      |  size = "Small"
       |  instanceCount = 3
       |  cpu {
       |    cores = 4
@@ -373,6 +373,8 @@ class UsabilityTests extends munit.FunSuite:
         assertEquals(infraConfig.compute.size, InstanceSize.Small)
         assertEquals(infraConfig.network.subnets.size, 2)
         assertEquals(infraConfig.storage.totalSize, BigDecimal("1000.50"))
+
+        pprint.pprintln(infraConfig)
       }
     )
 
@@ -466,7 +468,10 @@ class UsabilityTests extends munit.FunSuite:
       )
     )
 
-    val renderedConfig = ConfigCodec[CloudInfraConfig].write(testConfig, includeComments = true).render
+    val renderOptions =
+      ConfigRenderOptions.defaults.setComments(true).setJson(false).setOriginComments(false).setFormatted(true)
+
+    val renderedConfig = ConfigCodec[CloudInfraConfig].write(testConfig, includeComments = true).render(renderOptions)
 
     println(renderedConfig)
 

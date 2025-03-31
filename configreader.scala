@@ -29,6 +29,16 @@ object ConfigReader:
 
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[A] =
       config.valueType match
+        case ConfigValueType.STRING =>
+          // Handle case where config is just a string (empty enum member)
+          val tpe = config.unwrapped.asInstanceOf[String]
+          readersMap.get(tpe) match
+            case Some(reader) =>
+              // For empty enum members, we can use any empty object as the value
+              reader.read(ConfigValueFactory.fromMap(Map.empty.asJava), path).map(_.asInstanceOf[A])
+            case None =>
+              ReadResult.failure(ConfigError(s"Unknown subtype $tpe", path))
+
         case ConfigValueType.OBJECT =>
           val obj = config.asInstanceOf[ConfigObject]
 
@@ -58,7 +68,7 @@ object ConfigReader:
                   ReadResult.failure(ConfigError(s"Unknown subtype $tpe", ConfigPath.Field("type") :: path))
 
         case other =>
-          ReadResult.failure(ConfigError(s"Expected OBJECT for sum type, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected STRING or OBJECT for sum type, got $other", path))
 
   end ConfigSumReader
 

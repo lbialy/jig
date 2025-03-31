@@ -30,9 +30,13 @@ object ConfigWriter:
       val writer = subtypeWriter.asInstanceOf[ConfigWriter[A]]
       val value = writer.write(a, includeComments)
 
-      ConfigValueFactory.fromMap(
-        Map("type" -> label, "value" -> value).asJava
-      )
+      // If the value is an empty object, just return the type string
+      if value.valueType == ConfigValueType.OBJECT && value.asInstanceOf[ConfigObject].isEmpty then
+        ConfigValueFactory.fromAnyRef(label)
+      else
+        ConfigValueFactory.fromMap(
+          Map("type" -> label, "value" -> value).asJava
+        )
   end ConfigSumWriter
 
   class ConfigProductWriter[A](
@@ -57,6 +61,7 @@ object ConfigWriter:
               else fieldCfg
             label -> withComment
           }
+          .filterNot { case (_, cfg) => cfg.unwrapped == null }
           .toMap
 
       ConfigValueFactory.fromMap(kvPairs.asJava)
