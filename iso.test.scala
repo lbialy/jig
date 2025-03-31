@@ -277,7 +277,7 @@ class IsoTests extends FunSuite:
       case ReadFailed(errors) =>
         assertEquals(
           errors.head.getMessage,
-          "Expected NUMBER, got STRING (at root.age)",
+          """Invalid Int format: For input string: "not a number" (at root.age)""",
           "Error message does not match"
         )
       case _ => fail("Expected ReadFailed")
@@ -357,7 +357,7 @@ class IsoTests extends FunSuite:
       case ReadFailed(errors) =>
         assertEquals(
           errors.head.getMessage,
-          "Expected NUMBER, got STRING (at root.animals(1).value.lives)",
+          """Invalid Int format: For input string: "nine" (at root.animals(1).value.lives)""",
           "Error message does not match"
         )
       case _ => fail("Expected ReadFailed")
@@ -525,7 +525,11 @@ class IsoTests extends FunSuite:
       case ReadFailed(errors) =>
         assertEquals(errors.toList.size, 2, "Should contain exactly 2 errors")
         assert(errors.toList.exists(_.getMessage.contains("Expected STRING, got NUMBER (at root.name)")))
-        assert(errors.toList.exists(_.getMessage.contains("Expected NUMBER, got STRING (at root.age)")))
+        assert(
+          errors.toList.exists(
+            _.getMessage.contains("""Invalid Int format: For input string: "thirty" (at root.age)""")
+          )
+        )
       case _ => fail("Expected ReadFailed")
   }
 
@@ -860,6 +864,10 @@ class IsoTests extends FunSuite:
       case ReadFailed(errors) =>
         assertEquals(errors.toList.size, 2, "Should have two errors")
         assert(errors.toList.exists(_.getMessage.contains("Expected STRING, got NUMBER (at root.name)")))
-        assert(errors.toList.exists(_.getMessage.contains("Expected NUMBER, got STRING (at root.age)")))
+        assert(
+          errors.toList.exists(
+            _.getMessage.contains("""Invalid Int format: For input string: "not a number" (at root.age)""")
+          )
+        )
       case _ => fail("Expected ReadFailed")
   }

@@ -43,4 +43,9 @@ object ReadResult:
       map2(fa, acc)(_ :: _)
     }
 
-extension [A](nel: NonEmptyList[A]) def mkString(sep: String = ", "): String = nel.toList.mkString(sep)
+extension [A](nel: NonEmptyList[A])
+  def mkString(sep: String = ", "): String =
+    nel.toList.mkString(sep)
+
+  def mkString(prefix: String, sep: String, suffix: String): String =
+    nel.toList.mkString(prefix, sep, suffix)

@@ -4,6 +4,7 @@ import org.ekrich.config.*
 import scala.deriving.Mirror
 import scala.quoted.*
 import scala.jdk.CollectionConverters.*
+import scala.util.{Failure, Success, Try}
 
 /** Typeclass for reading an `A` from a `ConfigValue`, returning `ReadResult[A]`.
   */
@@ -120,8 +121,13 @@ object ConfigReader:
       config.valueType match
         case ConfigValueType.NUMBER =>
           ReadResult.success(config.unwrapped.asInstanceOf[Number].intValue)
+        case ConfigValueType.STRING =>
+          try ReadResult.success(config.unwrapped.asInstanceOf[String].toInt)
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid Int format: ${e.getMessage}", path))
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER or STRING, got $other", path))
 
   given ConfigReader[Boolean] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Boolean] =
@@ -136,40 +142,65 @@ object ConfigReader:
       config.valueType match
         case ConfigValueType.NUMBER =>
           ReadResult.success(config.unwrapped.asInstanceOf[Number].byteValue)
+        case ConfigValueType.STRING =>
+          try ReadResult.success(config.unwrapped.asInstanceOf[String].toByte)
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid Byte format: ${e.getMessage}", path))
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER or STRING, got $other", path))
 
   given ConfigReader[Short] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Short] =
       config.valueType match
         case ConfigValueType.NUMBER =>
           ReadResult.success(config.unwrapped.asInstanceOf[Number].shortValue)
+        case ConfigValueType.STRING =>
+          try ReadResult.success(config.unwrapped.asInstanceOf[String].toShort)
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid Short format: ${e.getMessage}", path))
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER or STRING, got $other", path))
 
   given ConfigReader[Long] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Long] =
       config.valueType match
         case ConfigValueType.NUMBER =>
           ReadResult.success(config.unwrapped.asInstanceOf[Number].longValue)
+        case ConfigValueType.STRING =>
+          try ReadResult.success(config.unwrapped.asInstanceOf[String].toLong)
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid Long format: ${e.getMessage}", path))
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER or STRING, got $other", path))
 
   given ConfigReader[Float] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Float] =
       config.valueType match
         case ConfigValueType.NUMBER =>
           ReadResult.success(config.unwrapped.asInstanceOf[Number].floatValue)
+        case ConfigValueType.STRING =>
+          try ReadResult.success(config.unwrapped.asInstanceOf[String].toFloat)
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid Float format: ${e.getMessage}", path))
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER or STRING, got $other", path))
 
   given ConfigReader[Double] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Double] =
       config.valueType match
         case ConfigValueType.NUMBER =>
           ReadResult.success(config.unwrapped.asInstanceOf[Number].doubleValue)
+        case ConfigValueType.STRING =>
+          try ReadResult.success(config.unwrapped.asInstanceOf[String].toDouble)
+          catch
+            case e: NumberFormatException =>
+              ReadResult.failure(ConfigError(s"Invalid Double format: ${e.getMessage}", path))
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected NUMBER or STRING, got $other", path))
 
   given ConfigReader[Char] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[Char] =
@@ -209,12 +240,18 @@ object ConfigReader:
         path: List[ConfigPath] = List(ConfigPath.Root)
     ): ReadResult[scala.concurrent.duration.Duration] =
       config.valueType match
+        case ConfigValueType.STRING =>
+          Try(config.atPath("here").getDuration("here")) match
+            case Success(javaDuration) =>
+              ReadResult.success(scala.concurrent.duration.Duration.fromNanos(javaDuration.toNanos))
+            case Failure(e) =>
+              ReadResult.failure(ConfigError(s"Invalid duration format: ${e.getMessage}", path))
         case ConfigValueType.NUMBER =>
           ReadResult.success(
             scala.concurrent.duration.Duration.fromNanos(config.unwrapped.asInstanceOf[Number].longValue)
           )
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected STRING or NUMBER, got $other", path))
 
   given ConfigReader[scala.concurrent.duration.FiniteDuration] with
     def read(
@@ -222,6 +259,12 @@ object ConfigReader:
         path: List[ConfigPath] = List(ConfigPath.Root)
     ): ReadResult[scala.concurrent.duration.FiniteDuration] =
       config.valueType match
+        case ConfigValueType.STRING =>
+          Try(config.atPath("here").getDuration("here")) match
+            case Success(javaDuration) =>
+              ReadResult.success(scala.concurrent.duration.Duration.fromNanos(javaDuration.toNanos))
+            case Failure(e) =>
+              ReadResult.failure(ConfigError(s"Invalid duration format: ${e.getMessage}", path))
         case ConfigValueType.NUMBER =>
           ReadResult.success(
             scala.concurrent.duration.FiniteDuration(
@@ -230,7 +273,7 @@ object ConfigReader:
             )
           )
         case other =>
-          ReadResult.failure(ConfigError(s"Expected NUMBER, got $other", path))
+          ReadResult.failure(ConfigError(s"Expected STRING or NUMBER, got $other", path))
 
   given javaLongReader: ConfigReader[java.lang.Long] with
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.lang.Long] =
