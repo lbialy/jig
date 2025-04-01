@@ -114,11 +114,21 @@ object ConfigWriter:
 
   given ConfigWriter[scala.concurrent.duration.Duration] with
     def write(a: scala.concurrent.duration.Duration, includeComments: Boolean = false): ConfigValue =
-      ConfigValueFactory.fromAnyRef(a.toNanos.asInstanceOf[AnyRef])
+      val nanos = a.toNanos
+      val (value, unit) = nanos match
+        case n if n >= 86400000000000L => (n.toDouble / 86400000000000L, "d")
+        case n if n >= 3600000000000L  => (n.toDouble / 3600000000000L, "h")
+        case n if n >= 60000000000L    => (n.toDouble / 60000000000L, "m")
+        case n if n >= 1000000000L     => (n.toDouble / 1000000000L, "s")
+        case n if n >= 1000000L        => (n.toDouble / 1000000L, "ms")
+        case n if n >= 1000L           => (n.toDouble / 1000L, "us")
+        case n                         => (n.toDouble, "ns")
+      val formattedValue = if value % 1 == 0 then value.toLong.toString else value.toString
+      ConfigValueFactory.fromAnyRef(s"$formattedValue$unit")
 
   given ConfigWriter[scala.concurrent.duration.FiniteDuration] with
     def write(a: scala.concurrent.duration.FiniteDuration, includeComments: Boolean = false): ConfigValue =
-      ConfigValueFactory.fromAnyRef(a.toNanos.asInstanceOf[AnyRef])
+      ConfigWriter[scala.concurrent.duration.Duration].write(a, includeComments)
 
   given javaLongWriter: ConfigWriter[java.lang.Long] with
     def write(a: java.lang.Long, includeComments: Boolean = false): ConfigValue =
@@ -250,7 +260,8 @@ object ConfigWriter:
 
   given javaTimeDurationConfigWriter: ConfigWriter[java.time.Duration] with
     def write(a: java.time.Duration, includeComments: Boolean = false): ConfigValue =
-      ConfigValueFactory.fromAnyRef(a.toString)
+      ConfigWriter[scala.concurrent.duration.Duration]
+        .write(scala.concurrent.duration.Duration.fromNanos(a.toNanos), includeComments)
 
   given ConfigWriter[java.time.Period] with
     def write(a: java.time.Period, includeComments: Boolean = false): ConfigValue =

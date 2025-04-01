@@ -122,3 +122,67 @@ class InstancesTest extends FunSuite:
   testIsomorphic("Set[List[Int]]", Set(List(1, 2), List(3, 4)))
   testIsomorphic("Map[String, Vector[Int]]", Map("nums" -> Vector(1, 2, 3)))
   testIsomorphic("Vector[Map[String, Int]]", Vector(Map("a" -> 1), Map("b" -> 2)))
+
+  test("Duration writers") {
+    import scala.concurrent.duration.*
+    import java.time.Duration as JavaDuration
+
+    // Test scala.concurrent.duration.Duration
+    val scalaDurations = List(
+      5.days -> "5d",
+      2.5.hours -> "2.5h",
+      30.minutes -> "30m",
+      45.seconds -> "45s",
+      500.millis -> "500ms",
+      100.micros -> "100us",
+      999.nanos -> "999ns",
+      // Test edge cases
+      1.day -> "1d",
+      1.hour -> "1h",
+      1.minute -> "1m",
+      1.second -> "1s",
+      1.milli -> "1ms",
+      1.micro -> "1us",
+      1.nano -> "1ns",
+      // Test decimal values
+      1.5.days -> "1.5d",
+      1.5.hours -> "1.5h",
+      1.5.minutes -> "1.5m",
+      1.5.seconds -> "1.5s",
+      1.5.millis -> "1.5ms",
+      1.5.micros -> "1.5us",
+      1.5.nanos -> "2ns" // ns are rounded to the nearest integer
+    )
+
+    scalaDurations.foreach { case (duration, expected) =>
+      val configValue = ConfigWriter[scala.concurrent.duration.Duration].write(duration)
+      assertEquals(configValue.unwrapped, expected)
+    }
+
+    // Test scala.concurrent.duration.FiniteDuration
+    val finiteDuration = 5.seconds
+    val finiteConfigValue = ConfigWriter[scala.concurrent.duration.FiniteDuration].write(finiteDuration)
+    assertEquals(finiteConfigValue.unwrapped, "5s")
+
+    // Test java.time.Duration
+    val javaDurations = List(
+      JavaDuration.ofDays(5) -> "5d",
+      JavaDuration.ofHours(2).plusMinutes(30) -> "2.5h",
+      JavaDuration.ofMinutes(30) -> "30m",
+      JavaDuration.ofSeconds(45) -> "45s",
+      JavaDuration.ofMillis(500) -> "500ms",
+      JavaDuration.ofNanos(999) -> "999ns",
+      // Test edge cases
+      JavaDuration.ofDays(1) -> "1d",
+      JavaDuration.ofHours(1) -> "1h",
+      JavaDuration.ofMinutes(1) -> "1m",
+      JavaDuration.ofSeconds(1) -> "1s",
+      JavaDuration.ofMillis(1) -> "1ms",
+      JavaDuration.ofNanos(1) -> "1ns"
+    )
+
+    javaDurations.foreach { case (duration, expected) =>
+      val configValue = ConfigWriter[JavaDuration].write(duration)
+      assertEquals(configValue.unwrapped, expected)
+    }
+  }

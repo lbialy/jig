@@ -499,8 +499,14 @@ object ConfigReader:
     def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[java.time.Duration] =
       config.valueType match
         case ConfigValueType.STRING =>
-          try ReadResult.success(java.time.Duration.parse(config.unwrapped.asInstanceOf[String]))
-          catch case e: Exception => ReadResult.failure(ConfigError(s"Invalid Duration format: ${e.getMessage}", path))
+          val key = path.head match
+            case ConfigPath.Root        => "root"
+            case ConfigPath.Field(name) => name
+            case ConfigPath.Index(idx)  => idx.toString
+
+          Try(config.atPath(key).getDuration(key)) match
+            case Success(javaDuration) => ReadResult.success(javaDuration)
+            case Failure(e) => ReadResult.failure(ConfigError(s"Invalid duration format: ${e.getMessage}", path))
         case other => ReadResult.failure(ConfigError(s"Expected STRING, got $other", path))
 
   given ConfigReader[java.time.Period] with

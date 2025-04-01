@@ -4,3 +4,4 @@
 
 //> using test.dep com.lihaoyi::pprint:0.9.0
 //> using test.dep org.scalameta::munit::1.1.0
+//> using test.dep com.github.jatcwang::difflicious-munit:0.4.3
