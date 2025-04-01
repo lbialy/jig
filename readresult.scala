@@ -14,21 +14,21 @@ sealed trait ReadResult[+A]:
     case ReadSucceeded(a)  => f(a)
     case f @ ReadFailed(_) => f
 
-  def fold[B](f: NonEmptyList[ConfigError] => B, g: A => B): B = this match
+  def fold[B](f: NonEmptyList[ConfigEntryError] => B, g: A => B): B = this match
     case ReadSucceeded(a) => g(a)
     case ReadFailed(es)   => f(es)
 
-  def toEither: Either[NonEmptyList[ConfigError], A] = this match
+  def toEither: Either[NonEmptyList[ConfigEntryError], A] = this match
     case ReadSucceeded(a) => Right(a)
     case ReadFailed(es)   => Left(es)
 
 case class ReadSucceeded[+A](value: A) extends ReadResult[A]
-case class ReadFailed(errors: NonEmptyList[ConfigError]) extends ReadResult[Nothing]
+case class ReadFailed(errors: NonEmptyList[ConfigEntryError]) extends ReadResult[Nothing]
 
 object ReadResult:
   def success[A](a: A): ReadResult[A] = ReadSucceeded(a)
-  def failure(error: ConfigError): ReadResult[Nothing] = ReadFailed(NonEmptyList.one(error))
-  def failures(head: ConfigError, tail: ConfigError*): ReadResult[Nothing] =
+  def failure(error: ConfigEntryError): ReadResult[Nothing] = ReadFailed(NonEmptyList.one(error))
+  def failures(head: ConfigEntryError, tail: ConfigEntryError*): ReadResult[Nothing] =
     ReadFailed(NonEmptyList.fromHeadTail(head, tail.toList))
 
   def map2[A, B, C](fa: ReadResult[A], fb: ReadResult[B])(f: (A, B) => C): ReadResult[C] =

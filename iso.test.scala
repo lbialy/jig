@@ -298,7 +298,7 @@ class IsoTests extends FunSuite:
     assertEquals(
       result,
       ReadResult.failure(
-        ConfigError("Unknown subtype InvalidAnimal", List(ConfigPath.Field("type"), ConfigPath.Root))
+        ConfigEntryError("Unknown subtype InvalidAnimal", List(ConfigPath.Field("type"), ConfigPath.Root))
       ),
       "Error message does not match"
     )
@@ -662,8 +662,8 @@ class IsoTests extends FunSuite:
 
   test("ReadResult map2 correctly accumulates errors") {
     // Create a few error results to combine
-    val error1 = ReadResult.failure(ConfigError("Error 1"))
-    val error2 = ReadResult.failure(ConfigError("Error 2"))
+    val error1 = ReadResult.failure(ConfigEntryError("Error 1"))
+    val error2 = ReadResult.failure(ConfigEntryError("Error 2"))
     val success = ReadResult.success(42)
 
     // Test combining two failures
@@ -702,10 +702,10 @@ class IsoTests extends FunSuite:
     // Create a list with multiple error results and some successes
     val results = List(
       ReadResult.success(1),
-      ReadResult.failure(ConfigError("Error A")),
+      ReadResult.failure(ConfigEntryError("Error A")),
       ReadResult.success(3),
-      ReadResult.failure(ConfigError("Error B")),
-      ReadResult.failure(ConfigError("Error C"))
+      ReadResult.failure(ConfigEntryError("Error B")),
+      ReadResult.failure(ConfigEntryError("Error C"))
     )
 
     val sequenced = ReadResult.sequence(results)
