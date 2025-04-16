@@ -1,6 +1,9 @@
-# Jig
+<div style="text-align:center">
+  <img src="jig.png" alt="Jig Logo" style="width: 200px;">
+</div>
+<br/>
 
-A minimal, type-safe configuration library for Scala 3 that focuses on both reading and writing configuration files. Built with modern Scala features and designed to be multiplatform.
+A **minimal, type-safe configuration library for Scala 3** that focuses on **both reading and writing configuration files**. Built with modern Scala features and designed to be multiplatform.
 
 ## Why Another Config Library?
 
