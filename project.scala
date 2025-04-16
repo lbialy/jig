@@ -11,5 +11,5 @@
 //> using publish.url "https://github.com/lbialy/jig"
 //> using publish.vcs "github:lbialy/jig"
 //> using publish.license "MIT"
-//> using publish.repository "central"
+//> using publish.repository "central-s01"
 //> using publish.developer "lbialy|Łukasz Biały|https://github.com/lbialy"
