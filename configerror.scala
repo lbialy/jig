@@ -7,4 +7,5 @@ case class ConfigEntryError(msg: String, path: List[ConfigPath] = List(ConfigPat
     extends Exception(
       s"$msg (at ${ConfigPath.renderPath(path)})"
     )
-    with NoStackTrace
+    with NoStackTrace:
+  def render: String = s"$msg at ${ConfigPath.renderPath(path)}"

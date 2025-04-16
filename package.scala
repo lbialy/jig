@@ -5,11 +5,26 @@ import scala.util.{Try, Success, Failure}
 import java.nio.file.{Path, Files}
 import scala.jdk.CollectionConverters.*
 
+export org.ekrich.config.{Config, ConfigFactory, ConfigRenderOptions}
+
 val JigRenderOptions =
   ConfigRenderOptions.defaults.setComments(true).setJson(false).setOriginComments(false).setFormatted(true)
 
 case class ConfigError(msg: String, errors: List[ConfigEntryError] = List.empty, cause: Throwable = null)
-    extends Exception(msg, cause)
+    extends Exception(msg, cause):
+  override def toString: String =
+    s"""ConfigError(
+      |  msg = $msg,
+      |  errors = $errors,
+      |  cause = $cause
+      |)""".stripMargin
+
+  def render: String =
+    s"""Configuration error: ${msg}
+       |  ${errors.map(e => s" * ${e.render}").mkString("\n")}
+       |${if cause != null then "Caused by: " else ""}
+       |  ${Option(cause).map(c => s"  ${c.toString}").mkString("\n")}
+       |""".stripMargin
 
 object read:
   def apply[A](using reader: ConfigReader[A]): Either[ConfigError, A] =
@@ -39,11 +54,16 @@ object read:
 
 object write:
   object file:
-    def apply[A](a: A, path: Path, renderOptions: ConfigRenderOptions = JigRenderOptions)(using
+    def apply[A](
+        a: A,
+        path: Path,
+        includeComments: Boolean = true,
+        renderOptions: ConfigRenderOptions = JigRenderOptions
+    )(using
         writer: ConfigWriter[A]
     ): Either[ConfigError, Unit] =
       Try {
-        val configValue = writer.write(a)
+        val configValue = writer.write(a, includeComments)
         val rendered = configValue.render(renderOptions)
         Files.writeString(path, rendered)
 
@@ -52,8 +72,8 @@ object write:
         ConfigError(s"Failed to write config to path ${path}: ${e.getMessage}", cause = e)
       }
 
-  def apply[A](a: A, renderOptions: ConfigRenderOptions = JigRenderOptions)(using
+  def apply[A](a: A, includeComments: Boolean = true, renderOptions: ConfigRenderOptions = JigRenderOptions)(using
       writer: ConfigWriter[A]
   ): String =
-    val configValue = writer.write(a)
+    val configValue = writer.write(a, includeComments)
     configValue.render(renderOptions)

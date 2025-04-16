@@ -3,3 +3,6 @@
 .scala-build
 .vscode
 .idea
+
+*.conf
+.envrc

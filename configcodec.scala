@@ -1,8 +1,12 @@
 package machinespir.it.jig
 
 import org.ekrich.config.*
+import scala.annotation.implicitNotFound
 
 /** Typeclass that combines both reading and writing capabilities for a type `A`. */
+@implicitNotFound(
+  "No ConfigCodec found for type ${A}. Try to derive it using `derives ConfigCodec` clause or `ConfigCodec.derived[A]`. You might also want to look at `ConfigReader` and `ConfigWriter` which offer reading and writing capabilities separately."
+)
 trait ConfigCodec[A]:
   def reader: ConfigReader[A]
   def writer: ConfigWriter[A]

@@ -7,8 +7,12 @@ import scala.util.control.NoStackTrace
 import scala.deriving.Mirror
 import scala.quoted.*
 import scala.jdk.CollectionConverters.*
+import scala.annotation.implicitNotFound
 
 /** Typeclass for writing an `A` value to a `ConfigValue`. */
+@implicitNotFound(
+  "No ConfigWriter found for type ${A}. Try to derive it using `derives ConfigWriter` clause or `ConfigWriter.derived[A]`. You might also want to look at `ConfigCodec` which offers both reading and writing."
+)
 trait ConfigWriter[A]:
   def write(a: A, includeComments: Boolean = false): ConfigValue
 

@@ -5,9 +5,13 @@ import scala.deriving.Mirror
 import scala.quoted.*
 import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
+import scala.annotation.implicitNotFound
 
 /** Typeclass for reading an `A` from a `ConfigValue`, returning `ReadResult[A]`.
   */
+@implicitNotFound(
+  "No ConfigReader found for type ${A}. Try to derive it using `derives ConfigReader` clause or `ConfigReader.derived[A]`. You might also want to look at `ConfigCodec` which offers both reading and writing."
+)
 trait ConfigReader[A]:
   def read(config: ConfigValue, path: List[ConfigPath] = List(ConfigPath.Root)): ReadResult[A]
 
