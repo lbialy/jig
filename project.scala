@@ -10,6 +10,6 @@
 //> using publish.organization "ma.chinespirit"
 //> using publish.url "https://github.com/lbialy/jig"
 //> using publish.vcs "github:lbialy/jig"
-//> using publish.license "Apache-2.0"
+//> using publish.license "MIT"
 //> using publish.repository "central"
 //> using publish.developer "lbialy|Łukasz Biały|https://github.com/lbialy"
