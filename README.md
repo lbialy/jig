@@ -14,12 +14,42 @@ Most Scala configuration libraries focus primarily on reading configuration, oft
 - **Multiplatform**: No Java dependencies, making it compatible with Scala Native and Scala.js
 - **Type-Safe**: Leverages Scala 3's type system for compile-time safety and derivation
 
+## How to add it to your project?
+
+### Scala (scala-cli): 
+
+`//> using dep ma.chinespirit::jig:0.1.0`
+
+or in REPL: `--dep ma.chinespirit::jig:0.1.0`
+
+### sbt 
+
+`"ma.chinespirit" %% "jig" % "0.1.0"`
+
+### mill
+
+`ivy"ma.chinespirit::jig:0.1.0"`
+
+### Gradle
+
+`implementation 'ma.chinespirit:jig_3:0.1.0'`
+
+### Maven 
+```
+<dependency>
+  <groupId>ma.chinespirit</groupId>
+  <artifactId>jig_3</artifactId>
+  <version>0.1.0</version>
+  <scope>compile</scope>
+</dependency>
+```
+
 ## Features
 
 ### Reading and Writing Case Classes
 
 ```scala
-//> using dep ma.chinespirit::jig:0.1.0-SNAPSHOT
+//> using dep ma.chinespirit::jig:0.1.0
 
 import machinespir.it.jig.*
 import scala.concurrent.duration.*
